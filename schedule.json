@@ -1,0 +1,44 @@
+{
+  "title": "Daily Schedule",
+  "timezone": "local",
+  "default_notes": "",
+  "schedule": [
+    {"id": "wake", "time": "08:00", "title": "Wake (hair, aids, teeth)", "notes": ""},
+    {"id": "breakfast", "time": "09:00", "title": "Breakfast", "notes": ""},
+    {"id": "pills_morning", "time": "10:00", "title": "Pills", "notes": ""},
+    {"id": "exercise", "time": "11:00", "title": "Exercise (short set)", "notes": ""},
+    {"id": "lunch", "time": "12:00", "title": "Lunch", "notes": ""},
+    {"id": "nap", "time": "13:00", "title": "Nap / charge watch", "notes": ""},
+    {"id": "jobs", "time": "15:00", "title": "Jobs (writing/drawing)", "notes": ""},
+    {"id": "hobbies", "time": "17:00", "title": "Hobbies (reading/language)", "notes": ""},
+    {"id": "dinner", "time": "19:00", "title": "Dinner", "notes": ""},
+    {"id": "pills_evening", "time": "20:00", "title": "Pills", "notes": ""},
+    {"id": "bed", "time": "22:00", "title": "Bed (charge aids, teeth)", "notes": ""}
+  ],
+  "water_goal": 2,
+  "medications": [
+    {"id": "paracetamol", "name": "Paracetamol"},
+    {"id": "ibuprofen", "name": "Ibuprofen"}
+  ],
+  "overrides": {
+    "Monday": {
+      "extra": [
+        {"id": "mon_call_sheila", "time": "20:00", "title": "Call with Sheila"}
+      ]
+    },
+    "Tuesday": {},
+    "Wednesday": {
+      "extra": [
+        {"id": "wed_test_event", "time": "20:15", "title": "Test Event (Wed 20:00)"}
+      ]
+    },
+    "Thursday": {},
+    "Friday": {},
+    "Saturday": {},
+    "Sunday": {
+      "extra": [
+        {"id": "sun_call_sue", "time": "20:00", "title": "Call with Sue"}
+      ]
+    }
+  }
+}
