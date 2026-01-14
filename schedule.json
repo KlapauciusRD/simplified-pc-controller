@@ -20,6 +20,12 @@
     {"id": "paracetamol", "name": "Paracetamol"},
     {"id": "ibuprofen", "name": "Ibuprofen"}
   ],
+  "quick_calls": [
+    {"name": "Call 1", "users": ["alice@example.com"]},
+    {"name": "Call 2", "users": ["bob@example.com"]},
+    {"name": "Call 3", "users": ["carol@example.com"]},
+    {"name": "Call 4", "users": ["dave@example.com"]}
+  ],
   "overrides": {
     "Monday": {
       "extra": [

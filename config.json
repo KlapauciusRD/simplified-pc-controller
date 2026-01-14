@@ -1,0 +1,65 @@
+{
+    "schedule": [
+        {
+            "time": "06:00",
+            "title": "Wake Up"
+        },
+        {
+            "time": "07:00",
+            "title": "Breakfast"
+        },
+        {
+            "time": "09:00",
+            "title": "Morning Work"
+        },
+        {
+            "time": "12:00",
+            "title": "Lunch"
+        },
+        {
+            "time": "13:00",
+            "title": "Afternoon Work"
+        },
+        {
+            "time": "18:00",
+            "title": "Dinner"
+        },
+        {
+            "time": "22:00",
+            "title": "Bedtime"
+        }
+    ],
+    "weekday_overrides": {},
+    "water_goal": 8,
+    "medication_schedule": [
+        "Morning (08:00)",
+        "Evening (20:00)"
+    ],
+    "other_meds": [
+        "Vitamin D",
+        "Magnesium"
+    ],
+    "teams_buttons": [
+        {
+            "label": "Mom",
+            "url": ""
+        },
+        {
+            "label": "Dad",
+            "url": ""
+        },
+        {
+            "label": "Work",
+            "url": ""
+        },
+        {
+            "label": "Friend",
+            "url": ""
+        }
+    ],
+    "series_dir": "D:/video/series",
+    "movies_dir": "D:/video/movies",
+    "auto_resume": true,
+    "fullscreen": false,
+    "font_size": 14
+}

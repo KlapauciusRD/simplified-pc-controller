@@ -5,6 +5,8 @@ import shutil
 from pathlib import Path
 import tkinter as tk
 from tkinter import simpledialog, messagebox
+import webbrowser
+from urllib.parse import quote
 
 HERE = Path(__file__).parent
 CONFIG_PATH = HERE / "schedule.json"
@@ -96,8 +98,9 @@ class ScheduleApp:
         p.write_text(json.dumps(self.log, indent=2, ensure_ascii=False), encoding="utf-8")
 
     def build_ui(self):
+        # Top header (date/time)
         top = tk.Frame(self.root)
-        top.pack(fill=tk.X, padx=10, pady=8)
+        top.grid(row=0, column=0, sticky="ew", padx=10, pady=8)
 
         self.date_label = tk.Label(top, text="", font=self.font_large)
         self.date_label.pack(side=tk.LEFT)
@@ -105,12 +108,20 @@ class ScheduleApp:
         self.time_label = tk.Label(top, text="", font=("Segoe UI", 36, "bold"))
         self.time_label.pack(side=tk.RIGHT)
 
+        # Main area: use grid so left (schedule) expands and right (side panel) stays a fixed column
+        self.root.grid_rowconfigure(1, weight=1)
+        self.root.grid_columnconfigure(0, weight=1)
+
         main = tk.Frame(self.root)
-        main.pack(fill=tk.BOTH, expand=True, padx=10, pady=6)
+        main.grid(row=1, column=0, sticky="nsew", padx=10, pady=6)
+        # Use 2:1 ratio so left area occupies roughly two-thirds of width
+        main.grid_columnconfigure(0, weight=2)
+        main.grid_columnconfigure(1, weight=1)
+        main.grid_rowconfigure(0, weight=1)
 
         # Left: schedule list (with scroll)
         left = tk.Frame(main)
-        left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        left.grid(row=0, column=0, sticky="nsew")
 
         canvas = tk.Canvas(left)
         scrollbar = tk.Scrollbar(left, orient=tk.VERTICAL, command=canvas.yview)
@@ -121,48 +132,70 @@ class ScheduleApp:
         canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        # Right: side panel for water and meds
-        side = tk.Frame(main, width=280)
-        side.pack(side=tk.RIGHT, fill=tk.Y, padx=(8,0))
-        self.build_side_panel(side)
+        # Right: side panel for water and meds — make it its own frame with scrolling if content is tall
+        # try to size the side panel to roughly one-third of the screen width
+        try:
+            side_w = int(self.root.winfo_screenwidth() / 3)
+        except Exception:
+            side_w = 340
+        side_container = tk.Frame(main, width=side_w)
+        side_container.grid(row=0, column=1, sticky="nsew", padx=(8,0))
+        side_container.grid_propagate(False)
 
-        # Build rows
+        # create a canvas inside side_container to allow vertical scrolling of side content
+        side_canvas = tk.Canvas(side_container)
+        side_scroll = tk.Scrollbar(side_container, orient=tk.VERTICAL, command=side_canvas.yview)
+        side_inner = tk.Frame(side_canvas)
+        side_inner.bind("<Configure>", lambda e: side_canvas.configure(scrollregion=side_canvas.bbox("all")))
+        side_canvas.create_window((0,0), window=side_inner, anchor="nw")
+        side_canvas.configure(yscrollcommand=side_scroll.set)
+        side_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        side_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Build side panel into the scrollable inner frame
+        self.build_side_panel(side_inner)
+
+        # Build schedule rows after side panel created
         self.build_schedule_rows()
 
         # Bottom controls (touch-friendly)
         bottom = tk.Frame(self.root)
-        bottom.pack(fill=tk.X, padx=10, pady=8)
+        bottom.grid(row=2, column=0, sticky="ew", padx=10, pady=8)
         btn_quit = tk.Button(bottom, text="Quit", font=self.font_small, command=self.root.quit)
         btn_quit.pack(side=tk.RIGHT)
 
     def build_side_panel(self, parent):
-        # Water tracker
-        lbl = tk.Label(parent, text="Water", font=("Segoe UI", 18, "bold"))
+        # Water tracker (compact fonts for side panel)
+        side_label_font = ("Segoe UI", 14, "bold")
+        side_med_font = ("Segoe UI", 12)
+        side_small_font = ("Segoe UI", 10)
+
+        lbl = tk.Label(parent, text="Water", font=side_label_font)
         lbl.pack(pady=(6,4))
         self.water_var = tk.StringVar()
         self.update_water_var()
-        water_lbl = tk.Label(parent, textvariable=self.water_var, font=("Segoe UI", 16))
+        water_lbl = tk.Label(parent, textvariable=self.water_var, font=side_med_font)
         water_lbl.pack()
         self.water_label_widget = water_lbl
         # status text below water
         self.water_status_var = tk.StringVar()
-        water_status_lbl = tk.Label(parent, textvariable=self.water_status_var, font=("Segoe UI", 12), fg="red")
+        water_status_lbl = tk.Label(parent, textvariable=self.water_status_var, font=side_small_font, fg="red")
         water_status_lbl.pack()
         self.water_status_lbl = water_status_lbl
-        btn_drink = tk.Button(parent, text="Drink", font=self.font_small, width=12, command=self.increment_water)
+        btn_drink = tk.Button(parent, text="Drink", font=side_small_font, width=12, command=self.increment_water)
         btn_drink.pack(pady=6)
-        btn_reset = tk.Button(parent, text="Reset Water", font=("Segoe UI",10), command=self.reset_water)
+        btn_reset = tk.Button(parent, text="Reset Water", font=side_small_font, command=self.reset_water)
         btn_reset.pack(pady=(0,10))
 
         # Medications
-        lblm = tk.Label(parent, text="Medications", font=("Segoe UI", 18, "bold"))
+        lblm = tk.Label(parent, text="Medications", font=side_label_font)
         lblm.pack(pady=(10,4))
         self.med_vars = {}
         self.med_hist_widgets = {}
         for med in self.medications:
             frame = tk.Frame(parent)
             frame.pack(fill=tk.X, pady=2, padx=6)
-            mlabel = tk.Label(frame, text=med.get("name"), font=self.font_med)
+            mlabel = tk.Label(frame, text=med.get("name"), font=side_med_font)
             mlabel.pack(side=tk.LEFT)
             # determine checked state defensively (older logs may lack keys)
             meds_state = self.log.get("_meds") if isinstance(self.log.get("_meds"), dict) else {}
@@ -178,13 +211,13 @@ class ScheduleApp:
                     except Exception:
                         last_taken = ""
             var = tk.StringVar(master=self.root, value=(last_taken if last_taken else ""))
-            mchk = tk.Label(frame, textvariable=var, font=("Segoe UI", 20), width=3)
+            mchk = tk.Label(frame, textvariable=var, font=("Segoe UI", 14), width=3)
             mchk.pack(side=tk.RIGHT)
-            mbtn = tk.Button(frame, text="Taken", font=("Segoe UI",10), command=lambda mid=med.get("id"): self.record_med_taken(mid))
+            mbtn = tk.Button(frame, text="Taken", font=side_small_font, command=lambda mid=med.get("id"): self.record_med_taken(mid))
             mbtn.pack(side=tk.RIGHT, padx=6)
             self.med_vars[med.get("id")] = var
             # history listbox under the medication row
-            hist = tk.Listbox(parent, height=4, font=("Segoe UI",10))
+            hist = tk.Listbox(parent, height=3, font=side_small_font)
             hist.pack(fill=tk.X, padx=12, pady=(0,8))
             self.med_hist_widgets[med.get("id")] = hist
             # populate history from log
@@ -196,11 +229,11 @@ class ScheduleApp:
                     txt = str(t)
                 hist.insert(tk.END, txt)
         # Other meds recorder
-        lblo = tk.Label(parent, text="Other Medication", font=("Segoe UI", 16, "bold"))
+        lblo = tk.Label(parent, text="Other Medication", font=side_label_font)
         lblo.pack(pady=(8,4))
         btn_other = tk.Button(parent, text="Record Other Med", font=self.font_small, command=self.record_other_med)
         btn_other.pack(pady=(0,6))
-        self.other_med_hist = tk.Listbox(parent, height=6, font=("Segoe UI",10))
+        self.other_med_hist = tk.Listbox(parent, height=4, font=side_small_font)
         self.other_med_hist.pack(fill=tk.X, padx=6, pady=(0,8))
         # populate other med history
         other_list = self.log.get("_other_meds", []) or []
@@ -213,9 +246,9 @@ class ScheduleApp:
             self.other_med_hist.insert(tk.END, txt)
 
         # Notes for today (local)
-        lbl_notes = tk.Label(parent, text="Notes for Today", font=("Segoe UI", 16, "bold"))
+        lbl_notes = tk.Label(parent, text="Notes for Today", font=side_label_font)
         lbl_notes.pack(pady=(8,4))
-        self.notes_text = tk.Text(parent, height=6, font=("Segoe UI", 12))
+        self.notes_text = tk.Text(parent, height=5, font=("Segoe UI", 11))
         self.notes_text.pack(fill=tk.X, padx=6, pady=(0,8))
         # populate from today's log
         try:
@@ -231,10 +264,27 @@ class ScheduleApp:
         except Exception:
             pass
 
-        btn_save_notes = tk.Button(parent, text="Save Notes", font=self.font_small, command=self.save_today_notes)
-        btn_save_notes.pack(pady=(0,4))
-        btn_clear_notes = tk.Button(parent, text="Clear Notes", font=self.font_small, command=self.clear_today_notes)
-        btn_clear_notes.pack(pady=(0,8))
+        # Save/Clear buttons removed — notes auto-save on edit and focus-out
+
+        # Quick Teams calls (4 in a row)
+        lbl_calls = tk.Label(parent, text="Quick Calls", font=side_label_font)
+        lbl_calls.pack(pady=(8,4))
+        calls_frame = tk.Frame(parent)
+        calls_frame.pack(fill=tk.X, padx=6, pady=(0,8))
+
+        quick_calls = self.config.get("quick_calls", []) or []
+        # ensure list length up to 4 for indexing
+        while len(quick_calls) < 4:
+            quick_calls.append(None)
+
+        self.quick_call_buttons = []
+        for i in range(4):
+            cfg = quick_calls[i]
+            name = cfg.get("name") if isinstance(cfg, dict) and cfg.get("name") else f"Call {i+1}"
+            btn = tk.Button(calls_frame, text=name, font=("Segoe UI", 10), width=10,
+                            command=lambda cfg=cfg, idx=i: self.start_teams_call(cfg, idx))
+            btn.grid(row=0, column=i, padx=4)
+            self.quick_call_buttons.append(btn)
 
     def edit_note(self, item):
         cur = self.log.get(item["id"], {})
@@ -491,6 +541,60 @@ class ScheduleApp:
                 if txt != self.log.get("_today_notes", ""):
                     self.log["_today_notes"] = txt
                     self.save_log()
+        except Exception:
+            pass
+
+    def start_teams_call(self, cfg, idx=0):
+        """Launch a Teams call. `cfg` may be None or a dict with keys:
+        - 'url': full Teams URL to open
+        - 'users': list of email addresses to call
+        - 'name': display name for the button
+        If not configured, show guidance to edit `schedule.json` quick_calls.
+        """
+        try:
+            if not cfg:
+                try:
+                    messagebox.showinfo("Not configured",
+                                        f"No target configured for Call {idx+1}.\n\nAdd a `quick_calls` entry in schedule.json with a `users` list or `url`.",
+                                        parent=self.root)
+                except Exception:
+                    pass
+                return
+
+            # If cfg has a direct URL, open it
+            if isinstance(cfg, dict) and cfg.get('url'):
+                url = cfg.get('url')
+                webbrowser.open(url, new=1)
+                return
+
+            # If cfg has users, construct Teams call URL
+            users = []
+            if isinstance(cfg, dict) and cfg.get('users'):
+                users = cfg.get('users')
+            elif isinstance(cfg, str):
+                # legacy: single email string
+                users = [cfg]
+
+            if users:
+                try:
+                    enc = ",".join([quote(u.strip()) for u in users if u])
+                    # Prefer the msteams protocol to open the desktop app; include a best-effort video flag.
+                    msteams = f"msteams://teams.microsoft.com/l/call/0/0?users={enc}&video=true"
+                    https = f"https://teams.microsoft.com/l/call/0/0?users={enc}&video=true"
+                    try:
+                        webbrowser.open(msteams, new=1)
+                        return
+                    except Exception:
+                        webbrowser.open(https, new=1)
+                        return
+                except Exception:
+                    pass
+
+            # fallback: no usable info
+            try:
+                messagebox.showinfo("Call not started", "Unable to start call: invalid configuration.", parent=self.root)
+            except Exception:
+                pass
         except Exception:
             pass
 
