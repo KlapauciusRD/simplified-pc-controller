@@ -30,9 +30,13 @@ DEFAULT_CONFIG = {
     'screen_index': 1,
     'window_width_percent': 25,
     'font_size': 26,
-    'auto_resume': True,
-    'auto_subtitles': True,
+        'auto_resume': True,
+        'auto_subtitles': True,
     'subtitle_language': 'en',
+        # Schedule block behavior: schedule app will create the flag file by default,
+        # but VLC will not block playback by default unless this is set to True.
+        'block_on_outstanding': False,
+        'schedule_block_file': 'schedule_block.flag',
     'last_playlist': None,
     'last_position': 0
 }
@@ -68,6 +72,7 @@ def save_config(config):
 config = load_config()
 SKYPE_FLAG_LOCATION = pathlib.Path(config['flag_file'])
 VLC_WINNAME = config['vlc_window_title']
+SCHEDULE_BLOCK_PATH = pathlib.Path(config.get('schedule_block_file', 'schedule_block.flag'))
 
 def minimise_vlc_window():
     # This function is now deprecated - use VLCController methods instead
@@ -110,6 +115,8 @@ class VLCController:
         self.load_media_options()
         self.start_monitoring_thread()
         self.start_status_thread()
+        # start schedule block monitor
+        self.start_schedule_block_monitor()
         
         self.root = root
         
@@ -214,6 +221,34 @@ class VLCController:
                 print('ingesting flag')
                 self.hide()
             time.sleep(1)
+
+    def start_schedule_block_monitor(self):
+        def monitor():
+            last_state = False
+            while True:
+                try:
+                    exists = SCHEDULE_BLOCK_PATH.exists()
+                    if exists and not last_state:
+                        # newly blocked
+                        try:
+                            # pause playback if currently playing
+                            player = self.player.get_media_player()
+                            if player and player.get_state() == 3:  # Playing
+                                self.pause()
+                                try:
+                                    messagebox.showwarning("Playback blocked", "Please complete scheduled activities before playing.")
+                                except Exception:
+                                    pass
+                            if player:
+                                player.release()
+                        except Exception:
+                            pass
+                    last_state = exists
+                except Exception:
+                    pass
+                time.sleep(1)
+        t = threading.Thread(target=monitor, daemon=True)
+        t.start()
 
     def start_status_thread(self):
         """Start thread to monitor playback status"""
@@ -365,6 +400,16 @@ class VLCController:
     def play(self):
         self.make_fullscreen()
         self.maximise_vlc_window()
+        # block playback if schedule outstanding flag present and feature enabled
+        try:
+            if self.config.get('block_on_outstanding', True) and SCHEDULE_BLOCK_PATH.exists():
+                try:
+                    messagebox.showwarning("Blocked", "Please complete scheduled activities before playing.")
+                except Exception:
+                    pass
+                return
+        except Exception:
+            pass
         if self.current_media_list is None:
             self.full_random_playlist()
         

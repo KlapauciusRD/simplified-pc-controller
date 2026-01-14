@@ -12,6 +12,7 @@ LOG_DIR = HERE / "schedule_logs"
 LOG_DIR.mkdir(exist_ok=True)
 EXPORT_DIR = HERE / "schedule_exports"
 EXPORT_DIR.mkdir(exist_ok=True)
+BLOCK_FLAG = HERE / "schedule_block.flag"
 
 DEFAULT_HIGHLIGHT = "#fffbcc"
 CURRENT_BG = "#cfe9ff"
@@ -32,6 +33,7 @@ class ScheduleApp:
 
         self.config = self.load_config()
         self.water_goal = self.config.get("water_goal", 3)
+        self.block_feature_enabled = self.config.get("block_on_outstanding", True)
         self.medications = self.config.get("medications", [])
         self.schedule = self.parse_schedule(self.config.get("schedule", []))
         # apply any per-weekday overrides (extra events)
@@ -306,6 +308,11 @@ class ScheduleApp:
                 self.water_status_lbl.configure(bg=bg)
             except Exception:
                 pass
+        # update block flag in case water status impacts outstanding state
+        try:
+            self.update_outstanding_flag()
+        except Exception:
+            pass
 
     def increment_water(self):
         entry = self.log.setdefault("_water", {"count": 0, "goal": self.water_goal})
@@ -384,6 +391,11 @@ class ScheduleApp:
         # update UI
         self.row_widgets[item["id"]]["check_var"].set("✓" if cur["checked"] else "")
         self.save_log()
+        # update outstanding flag since a check changed
+        try:
+            self.update_outstanding_flag()
+        except Exception:
+            pass
 
     def clear_today(self):
         if not messagebox.askyesno("Clear", "Clear all checks for today?", parent=self.root):
@@ -494,6 +506,11 @@ class ScheduleApp:
                     child.configure(bg=bg)
                 except Exception:
                     pass
+        # update block flag after highlighting decisions
+        try:
+            self.update_outstanding_flag()
+        except Exception:
+            pass
         # schedule next highlight update
         if self.running:
             self.root.after(5000, self.update_highlight)
@@ -504,6 +521,35 @@ class ScheduleApp:
         ms = int((next_midnight - now).total_seconds() * 1000)
         # schedule the midnight handler
         self.root.after(ms, self._midnight_handler)
+
+    def update_outstanding_flag(self):
+        """Create or remove the schedule block flag file depending on whether outstanding items exist and feature enabled."""
+        try:
+            if not self.block_feature_enabled:
+                # ensure flag removed
+                if BLOCK_FLAG.exists():
+                    BLOCK_FLAG.unlink()
+                return
+
+            now_time = datetime.datetime.now().time()
+            has_outstanding = False
+            for item in self.schedule:
+                item_time = item.get("time")
+                item_id = item.get("id")
+                if item_time and item_time < now_time:
+                    checked = bool(self.log.get(item_id, {}).get("checked"))
+                    if not checked:
+                        has_outstanding = True
+                        break
+
+            if has_outstanding:
+                # touch flag file
+                BLOCK_FLAG.write_text("outstanding", encoding="utf-8")
+            else:
+                if BLOCK_FLAG.exists():
+                    BLOCK_FLAG.unlink()
+        except Exception:
+            pass
 
     def _midnight_handler(self):
         try:
