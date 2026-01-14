@@ -78,6 +78,9 @@ class ScheduleApp:
                 data["_meds"] = {m.get("id"): {"taken": []} for m in self.medications}
             if "_other_meds" not in data:
                 data["_other_meds"] = []
+            # today's free-form notes
+            if "_today_notes" not in data:
+                data["_today_notes"] = ""
             return data
         # initialize log structure
         data = {item["id"]: {"checked": False, "note": ""} for item in self.schedule}
@@ -85,6 +88,7 @@ class ScheduleApp:
         data["_water"] = {"count": 0, "goal": self.water_goal}
         data["_meds"] = {m.get("id"): {"taken": []} for m in self.medications}
         data["_other_meds"] = []
+        data["_today_notes"] = ""
         return data
 
     def save_log(self):
@@ -207,6 +211,30 @@ class ScheduleApp:
             except Exception:
                 txt = str(rec)
             self.other_med_hist.insert(tk.END, txt)
+
+        # Notes for today (local)
+        lbl_notes = tk.Label(parent, text="Notes for Today", font=("Segoe UI", 16, "bold"))
+        lbl_notes.pack(pady=(8,4))
+        self.notes_text = tk.Text(parent, height=6, font=("Segoe UI", 12))
+        self.notes_text.pack(fill=tk.X, padx=6, pady=(0,8))
+        # populate from today's log
+        try:
+            self.notes_text.insert("1.0", self.log.get("_today_notes", ""))
+        except Exception:
+            pass
+
+        # autosave setup: debounce after edits and save on focus out
+        self._notes_autosave_after_id = None
+        try:
+            self.notes_text.bind('<KeyRelease>', lambda e: self._on_notes_change())
+            self.notes_text.bind('<FocusOut>', lambda e: self.save_today_notes())
+        except Exception:
+            pass
+
+        btn_save_notes = tk.Button(parent, text="Save Notes", font=self.font_small, command=self.save_today_notes)
+        btn_save_notes.pack(pady=(0,4))
+        btn_clear_notes = tk.Button(parent, text="Clear Notes", font=self.font_small, command=self.clear_today_notes)
+        btn_clear_notes.pack(pady=(0,8))
 
     def edit_note(self, item):
         cur = self.log.get(item["id"], {})
@@ -397,6 +425,75 @@ class ScheduleApp:
         except Exception:
             pass
 
+    def save_today_notes(self):
+        # cancel any scheduled autosave
+        try:
+            if getattr(self, '_notes_autosave_after_id', None):
+                try:
+                    self.root.after_cancel(self._notes_autosave_after_id)
+                except Exception:
+                    pass
+                self._notes_autosave_after_id = None
+        except Exception:
+            pass
+
+        try:
+            if hasattr(self, "notes_text"):
+                txt = self.notes_text.get("1.0", tk.END).strip()
+                self.log["_today_notes"] = txt
+                self.save_log()
+                try:
+                    messagebox.showinfo("Saved", "Notes saved for today.", parent=self.root)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def clear_today_notes(self):
+        if not messagebox.askyesno("Clear Notes", "Clear today's notes?", parent=self.root):
+            return
+        # cancel any scheduled autosave
+        try:
+            if getattr(self, '_notes_autosave_after_id', None):
+                try:
+                    self.root.after_cancel(self._notes_autosave_after_id)
+                except Exception:
+                    pass
+                self._notes_autosave_after_id = None
+        except Exception:
+            pass
+
+        try:
+            if hasattr(self, "notes_text"):
+                self.notes_text.delete("1.0", tk.END)
+                self.log["_today_notes"] = ""
+                self.save_log()
+        except Exception:
+            pass
+
+    def _on_notes_change(self):
+        # debounce autosave (1.5s)
+        try:
+            if getattr(self, '_notes_autosave_after_id', None):
+                try:
+                    self.root.after_cancel(self._notes_autosave_after_id)
+                except Exception:
+                    pass
+            self._notes_autosave_after_id = self.root.after(1500, self._autosave_notes)
+        except Exception:
+            pass
+
+    def _autosave_notes(self):
+        self._notes_autosave_after_id = None
+        try:
+            if hasattr(self, "notes_text"):
+                txt = self.notes_text.get("1.0", tk.END).strip()
+                if txt != self.log.get("_today_notes", ""):
+                    self.log["_today_notes"] = txt
+                    self.save_log()
+        except Exception:
+            pass
+
     def clear_today(self):
         if not messagebox.askyesno("Clear", "Clear all checks for today?", parent=self.root):
             return
@@ -465,6 +562,13 @@ class ScheduleApp:
                                 except Exception:
                                     txt = str(t)
                                 hist.insert(tk.END, txt)
+            # update today's notes UI
+            if hasattr(self, "notes_text"):
+                try:
+                    self.notes_text.delete("1.0", tk.END)
+                    self.notes_text.insert("1.0", self.log.get("_today_notes", ""))
+                except Exception:
+                    pass
             # update water and meds UI
             if hasattr(self, "water_var"):
                 self.update_water_var()
