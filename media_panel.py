@@ -414,58 +414,75 @@ class MediaPanel:
         self.media_quick_list = series_list + movie_list
 
     def build_ui(self):
-        """Restore original layout: large control buttons and quick access list."""
+        """Build UI with larger buttons in 2-column grid for touchscreen."""
         frame = tk.Frame(self.parent)
-        frame.pack(fill='both', expand=True)
+        frame.pack(fill='both', expand=True, padx=5, pady=5)
 
-        # Playback buttons (vertical layout)
-        self.play_button = ttk.Button(frame, text="Play", command=self.play)
-        self.play_button.pack(pady=5)
+        # Button style configuration
+        btn_font = ("Segoe UI", 13, "bold")
+        btn_height = 2
         
-        self.pause_button = ttk.Button(frame, text="Pause", command=self.pause)
-        self.pause_button.pack(pady=5)
+        # Control buttons in 2-column grid
+        controls_frame = tk.Frame(frame)
+        controls_frame.pack(fill='x', pady=(0, 10))
         
-        self.rewind_button = ttk.Button(frame, text="Rewind 30s", command=self.rewind_30s)
-        self.rewind_button.pack(pady=5)
+        # Configure grid columns to expand equally
+        controls_frame.columnconfigure(0, weight=1)
+        controls_frame.columnconfigure(1, weight=1)
         
-        self.ff_button = ttk.Button(frame, text="Fast Forward 30s", command=self.fast_forward_30s)
-        self.ff_button.pack(pady=5)
+        # Row 0
+        self.play_button = tk.Button(controls_frame, text="▶ Play", font=btn_font, height=btn_height,
+                                     relief=tk.RAISED, bd=3, command=self.play)
+        self.play_button.grid(row=0, column=0, padx=3, pady=3, sticky="ew")
         
-        self.prev_button = ttk.Button(frame, text="Previous", command=self.previous_in_playlist)
-        self.prev_button.pack(pady=5)
+        self.pause_button = tk.Button(controls_frame, text="⏸ Pause", font=btn_font, height=btn_height,
+                                      relief=tk.RAISED, bd=3, command=self.pause)
+        self.pause_button.grid(row=0, column=1, padx=3, pady=3, sticky="ew")
         
-        self.next_button = ttk.Button(frame, text="Next", command=self.next_in_playlist)
-        self.next_button.pack(pady=5)
+        # Row 1
+        self.rewind_button = tk.Button(controls_frame, text="⏪ -30s", font=btn_font, height=btn_height,
+                                       relief=tk.RAISED, bd=3, command=self.rewind_30s)
+        self.rewind_button.grid(row=1, column=0, padx=3, pady=3, sticky="ew")
         
-        self.random_button = ttk.Button(frame, text="Random", command=self.random_in_playlist)
-        self.random_button.pack(pady=5)
-
-        # Minimise video button
-        try:
-            self.minimise_button = ttk.Button(frame, text="Minimise Video", command=self.hide_window)
-            self.minimise_button.pack(pady=5)
-        except Exception:
-            pass
-
-        # Series / Movies dropdowns removed per user request
-        # Reshuffle quick access button
-        self.reshuffle_button = ttk.Button(frame, text="Reshuffle Shows", command=self.reshuffle_quick_access)
-        self.reshuffle_button.pack(pady=5)
+        self.ff_button = tk.Button(controls_frame, text="⏩ +30s", font=btn_font, height=btn_height,
+                                   relief=tk.RAISED, bd=3, command=self.fast_forward_30s)
+        self.ff_button.grid(row=1, column=1, padx=3, pady=3, sticky="ew")
         
-        # Quick access buttons
-        ttk.Label(frame, text="Quick Access:").pack(pady=(10,5))
+        # Row 2
+        self.prev_button = tk.Button(controls_frame, text="⏮ Previous", font=btn_font, height=btn_height,
+                                     relief=tk.RAISED, bd=3, command=self.previous_in_playlist)
+        self.prev_button.grid(row=2, column=0, padx=3, pady=3, sticky="ew")
+        
+        self.next_button = tk.Button(controls_frame, text="⏭ Next", font=btn_font, height=btn_height,
+                                     relief=tk.RAISED, bd=3, command=self.next_in_playlist)
+        self.next_button.grid(row=2, column=1, padx=3, pady=3, sticky="ew")
+        
+        # Row 3
+        self.random_button = tk.Button(controls_frame, text="🔀 Random", font=btn_font, height=btn_height,
+                                       relief=tk.RAISED, bd=3, command=self.random_in_playlist)
+        self.random_button.grid(row=3, column=0, padx=3, pady=3, sticky="ew")
+        
+        self.minimise_button = tk.Button(controls_frame, text="🗕 Minimize", font=btn_font, height=btn_height,
+                                         relief=tk.RAISED, bd=3, command=self.hide_window)
+        self.minimise_button.grid(row=3, column=1, padx=3, pady=3, sticky="ew")
+        
+        # Reshuffle button (full width)
+        self.reshuffle_button = tk.Button(frame, text="🔄 Reshuffle Shows", font=btn_font, height=btn_height,
+                                          relief=tk.RAISED, bd=3, command=self.reshuffle_quick_access)
+        self.reshuffle_button.pack(fill='x', pady=(5, 10))
+        
+        # Quick access section
+        quick_label = tk.Label(frame, text="Quick Access:", font=("Segoe UI", 12, "bold"))
+        quick_label.pack(pady=(5, 3))
+        
         self.quick_access_frame = tk.Frame(frame)
-        self.quick_access_frame.pack(pady=5)
+        self.quick_access_frame.pack(fill='both', expand=True, pady=5)
         self.individual_buttons = []        
 
         try:
             self.update_quick_access_buttons()
         except Exception:
             pass
-
-        # (Settings button removed per user request)
-
-        # (Removed inline status label and progress bar per user request)
     
     def reshuffle_quick_access(self):
         self.load_media_options()
@@ -476,9 +493,13 @@ class MediaPanel:
             button.destroy()
         self.individual_buttons.clear()
         
+        # Larger font for quick access buttons
+        btn_font = ("Segoe UI", 11)
+        
         for media_path in self.media_quick_list:
-            button = ttk.Button(self.quick_access_frame, text=media_path.name,
-                              command=lambda path=media_path: self.change_playlist(path))
+            button = tk.Button(self.quick_access_frame, text=media_path.name, font=btn_font,
+                             relief=tk.RAISED, bd=2, height=1,
+                             command=lambda path=media_path: self.change_playlist(path))
             button.pack(fill="x", pady=2)
             self.individual_buttons.append(button)
     

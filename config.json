@@ -2,31 +2,38 @@
     "schedule": [
         {
             "time": "06:00",
-            "title": "Wake Up"
+            "title": "Wake Up",
+            "description": "Start the day, morning routine"
         },
         {
             "time": "07:00",
-            "title": "Breakfast"
+            "title": "Breakfast",
+            "description": "Healthy meal to fuel the morning"
         },
         {
             "time": "09:00",
-            "title": "Morning Work"
+            "title": "Morning Work",
+            "description": "Focus time for important tasks"
         },
         {
             "time": "12:00",
-            "title": "Lunch"
+            "title": "Lunch",
+            "description": "Midday meal and break"
         },
         {
             "time": "13:00",
-            "title": "Afternoon Work"
+            "title": "Afternoon Work",
+            "description": "Continue productive work"
         },
         {
             "time": "18:00",
-            "title": "Dinner"
+            "title": "Dinner",
+            "description": "Evening meal with family"
         },
         {
             "time": "22:00",
-            "title": "Bedtime"
+            "title": "Bedtime",
+            "description": "Wind down and prepare for sleep"
         }
     ],
     "weekday_overrides": {},
@@ -62,5 +69,5 @@
     "auto_resume": true,
     "fullscreen": false,
     "font_size": 14,
-    "pause_on_outstanding": false
+    "pause_on_outstanding": true
 }

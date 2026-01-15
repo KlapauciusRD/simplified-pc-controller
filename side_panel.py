@@ -114,12 +114,20 @@ class SidePanel:
         while len(quick_calls) < 4:
             quick_calls.append(None)
         
+        # 2x2 grid layout with larger buttons for touchscreen
         for i in range(4):
             cfg = quick_calls[i]
             name = cfg.get("name") if isinstance(cfg, dict) and cfg.get("name") else f"Call {i+1}"
-            btn = tk.Button(calls_frame, text=name, font=("Segoe UI", 10), width=10,
+            row = i // 2
+            col = i % 2
+            btn = tk.Button(calls_frame, text=name, font=("Segoe UI", 14, "bold"), 
+                          height=2, relief=tk.RAISED, bd=3,
                           command=lambda cfg=cfg, idx=i: self.start_teams_call(cfg, idx))
-            btn.grid(row=0, column=i, padx=4)
+            btn.grid(row=row, column=col, padx=4, pady=4, sticky="ew")
+        
+        # Make columns expand equally
+        calls_frame.columnconfigure(0, weight=1)
+        calls_frame.columnconfigure(1, weight=1)
     
     def update_water_var(self):
         w = self.schedule_panel.log.get("_water", {})

@@ -106,6 +106,7 @@ class SchedulePanel:
                 "id": item_id,
                 "time": t,
                 "title": item.get("title", ""),
+                "description": item.get("description", ""),
                 "notes": item.get("notes", "")
             })
         out.sort(key=lambda x: x["time"])
@@ -128,6 +129,7 @@ class SchedulePanel:
                             "id": ex.get("id") or f"override_{ex.get('time')}",
                             "time": t,
                             "title": ex.get("title"),
+                            "description": ex.get("description", ""),
                             "notes": ex.get("notes", "")
                         })
                 self.schedule.sort(key=lambda x: x["time"])
@@ -173,8 +175,19 @@ class SchedulePanel:
             lbl_time = tk.Label(row, text=time_str, font=self.font_med, width=8, anchor="w")
             lbl_time.pack(side=tk.LEFT)
             
-            lbl_title = tk.Label(row, text=item.get("title", ""), font=self.font_med, anchor="w")
-            lbl_title.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            # Title and description container
+            text_frame = tk.Frame(row)
+            text_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            
+            lbl_title = tk.Label(text_frame, text=item.get("title", ""), font=self.font_med, anchor="w")
+            lbl_title.pack(anchor="w")
+            
+            # Show description if present
+            description = item.get("description", "")
+            if description:
+                lbl_desc = tk.Label(text_frame, text=description, font=("Segoe UI", 10), 
+                                   anchor="w", fg="#666")
+                lbl_desc.pack(anchor="w")
             
             chk_text = tk.StringVar(value=("✓" if self.log.get(item.get("id"), {}).get("checked") else ""))
             lbl_check = tk.Label(row, textvariable=chk_text, font=("Segoe UI", 22), width=3)
