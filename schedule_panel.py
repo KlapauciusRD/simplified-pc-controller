@@ -32,7 +32,29 @@ class SchedulePanel:
         self.font_small = ("Segoe UI", 12)
         
         self.water_goal = self.config.get("water_goal", 3)
-        self.medications = self.config.get("medications", [])
+
+        # Build medications list for the side panel UI.
+        # Support legacy `medications` config, include default painkillers,
+        # and include `other_meds` entries from config (strings).
+        meds = []
+        # If config provides explicit medications (list of dicts), use them
+        cfg_meds = self.config.get("medications")
+        if isinstance(cfg_meds, list) and cfg_meds:
+            for m in cfg_meds:
+                if isinstance(m, dict) and m.get("id") and m.get("name"):
+                    meds.append({"id": m.get("id"), "name": m.get("name")})
+
+        # Ensure basic painkillers are present
+        def ensure_med(mid, name):
+            if not any(x.get("id") == mid for x in meds):
+                meds.append({"id": mid, "name": name})
+
+        ensure_med("paracetamol", "Paracetamol")
+        ensure_med("ibuprofen", "Ibuprofen")
+
+        # Do NOT pre-load `other_meds` from config; other meds are added
+        # ad-hoc by the user at runtime and stored in the daily log.
+        self.medications = meds
         self.schedule = self.parse_schedule(self.config.get("schedule", []))
         self.apply_overrides()
         
@@ -74,10 +96,14 @@ class SchedulePanel:
     
     def parse_schedule(self, sched):
         out = []
-        for item in sched:
+        for idx, item in enumerate(sched):
             t = datetime.datetime.strptime(item["time"], "%H:%M").time()
+            # Generate ID from time+title if not present
+            item_id = item.get("id")
+            if not item_id:
+                item_id = f"{item['time']}_{item.get('title', '')}"
             out.append({
-                "id": item.get("id"),
+                "id": item_id,
                 "time": t,
                 "title": item.get("title", ""),
                 "notes": item.get("notes", "")

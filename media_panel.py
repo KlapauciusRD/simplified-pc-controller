@@ -9,6 +9,8 @@ import time
 import logging
 import tkinter as tk
 from tkinter import ttk
+import ctypes
+from ctypes import wintypes
 
 try:
     import vlc
@@ -25,7 +27,7 @@ class MediaPanel:
         self.parent = parent
         self.coordinator = coordinator
         self.config = config
-        
+
         # VLC setup (conditional)
         if VLC_AVAILABLE:
             self.vlc_instance = vlc.Instance()
@@ -35,7 +37,10 @@ class MediaPanel:
             self.current_position = 0
             self.is_playing = False
             # Register with coordinator
-            self.coordinator.register_vlc_controller(self)
+            try:
+                self.coordinator.register_vlc_controller(self)
+            except Exception:
+                pass
         else:
             self.vlc_instance = None
             self.player = None
@@ -43,84 +48,186 @@ class MediaPanel:
             self.current_folder = None
             self.current_position = 0
             self.is_playing = False
-        
+
         # Paths
         self.series_dir = pathlib.Path(self.config.get('series_dir', 'D:/video/series'))
         self.movies_dir = pathlib.Path(self.config.get('movies_dir', 'D:/video/movies'))
-        
+
         # Media lists
         self.series_available = []
         self.movies_available = []
         self.media_quick_list = []
-        
+
         # UI variables
         self.progress_var = tk.DoubleVar()
         self.volume_var = tk.IntVar(value=100)
-        
+
         # Load media and build UI
         self.load_media_options()
         self.build_ui()
         if VLC_AVAILABLE:
-            self.start_status_thread()
-    
-    def build_ui(self):
-        frame = tk.Frame(self.parent)
-        frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
-        # Show warning if VLC not available
-        if not VLC_AVAILABLE:
-            warning = tk.Label(frame, 
-                             text="⚠️ VLC not available\nUI preview only",
-                             font=("Segoe UI", 9), 
-                             fg="orange",
-                             bg="lightyellow",
-                             pady=5)
-            warning.pack(fill="x", pady=(0, 5))
-        
-        # Progress bar
-        self.progress_bar = ttk.Progressbar(frame, variable=self.progress_var, maximum=100)
-        self.progress_bar.pack(fill="x", pady=(0, 5))
-        
-        # Playback controls
-        controls = tk.Frame(frame)
-        controls.pack(pady=5)
-        
-        ttk.Button(controls, text="Play", command=self.play).grid(row=0, column=0, padx=2, pady=2, sticky='ew')
-        ttk.Button(controls, text="Pause", command=self.pause).grid(row=0, column=1, padx=2, pady=2, sticky='ew')
-        ttk.Button(controls, text="Stop", command=self.stop).grid(row=0, column=2, padx=2, pady=2, sticky='ew')
-        
-        ttk.Button(controls, text="<< 30s", command=self.rewind_30s).grid(row=1, column=0, padx=2, pady=2, sticky='ew')
-        ttk.Button(controls, text="Next", command=self.next_in_playlist).grid(row=1, column=1, padx=2, pady=2, sticky='ew')
-        ttk.Button(controls, text="30s >>", command=self.fast_forward_30s).grid(row=1, column=2, padx=2, pady=2, sticky='ew')
-        
-        # Utility buttons
-        ttk.Button(frame, text="Random from All Series",
-                  command=self.full_random_playlist).pack(fill="x", pady=2)
-        ttk.Button(frame, text="Reshuffle Shows",
-                  command=self.reshuffle_quick_access).pack(fill="x", pady=2)
-        ttk.Button(frame, text="Hide Window",
-                  command=self.hide_window).pack(fill="x", pady=2)
-        ttk.Button(frame, text="Show Fullscreen",
-                  command=self.show_fullscreen).pack(fill="x", pady=2)
-        
-        # Playlist selection
-        self.playlist_series_combo = ttk.Combobox(frame, 
-                                                  values=[sa.name for sa in self.series_available],
-                                                  state="readonly")
-        self.playlist_series_combo.pack(fill="x", pady=2)
-        self.playlist_series_combo.bind("<<ComboboxSelected>>", self.change_playlist_combo_series)
-        
-        self.playlist_movies_combo = ttk.Combobox(frame,
-                                                  values=[ma.name for ma in self.movies_available],
-                                                  state="readonly")
-        self.playlist_movies_combo.pack(fill="x", pady=2)
-        self.playlist_movies_combo.bind("<<ComboboxSelected>>", self.change_playlist_combo_movie)
-        
-        # Quick access
-        self.quick_access_frame = tk.Frame(frame)
-        self.quick_access_frame.pack(fill="x", pady=(5, 0))
-        self.individual_buttons = []
-        self.update_quick_access_buttons()
+            try:
+                self.start_status_thread()
+            except Exception:
+                pass
+
+    def _show_transient_popup(self, message, duration=3000):
+        """Show a large, non-modal popup centered over the parent for a short duration."""
+        try:
+            popup = tk.Toplevel(self.parent)
+            popup.overrideredirect(True)
+            popup.attributes('-topmost', True)
+
+            # Styling
+            bg = "#ffd"  # pale yellow
+            frm = tk.Frame(popup, bg=bg, bd=4, relief=tk.RIDGE)
+            frm.pack(fill=tk.BOTH, expand=True)
+
+            # Determine width and set wraplength so the full message is visible
+            try:
+                self.parent.update_idletasks()
+                pw = self.parent.winfo_width() or 800
+                ph = self.parent.winfo_height() or 600
+                px = self.parent.winfo_rootx()
+                py = self.parent.winfo_rooty()
+
+                # Use a larger minimum width so text isn't clipped on small popups
+                ww = max(480, int(pw * 0.6))
+                # Ensure popup not wider than parent minus some padding
+                ww = min(ww, pw - 40)
+
+                lbl = tk.Label(frm, text=message, font=("Segoe UI", 20, "bold"), bg=bg, fg="black", justify=tk.CENTER, wraplength=ww-40)
+                lbl.pack(padx=20, pady=14)
+
+                # Measure required height after wrapping
+                popup.update_idletasks()
+                hh = lbl.winfo_reqheight() + 40
+                x = px + max(10, (pw - ww) // 2)
+                y = py + max(10, (ph - hh) // 2)
+                popup.geometry(f"{ww}x{hh}+{x}+{y}")
+            except Exception:
+                try:
+                    lbl = tk.Label(frm, text=message, font=("Segoe UI", 18, "bold"), bg=bg, fg="black", justify=tk.CENTER, wraplength=360)
+                    lbl.pack(padx=20, pady=14)
+                    popup.geometry("480x120")
+                except Exception:
+                    pass
+
+            # Auto-destroy after duration ms
+            popup.after(duration, popup.destroy)
+        except Exception:
+            raise
+
+    def _ensure_fullscreen_attempts(self, attempts=5, delay_ms=300):
+        """Try to set libVLC fullscreen, retrying a few times, then fallback to window methods."""
+
+        def attempt(n):
+            # Try libVLC fullscreen
+            try:
+                player = None
+                try:
+                    player = self.player.get_media_player()
+                except Exception:
+                    player = None
+
+                if player:
+                    try:
+                        player.set_fullscreen(True)
+                        try:
+                            player.release()
+                        except Exception:
+                            pass
+                        return True
+                    except Exception:
+                        try:
+                            player.release()
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+            # If more retries, schedule another attempt
+            if n > 0:
+                try:
+                    self.parent.after(delay_ms, lambda: attempt(n - 1))
+                except Exception:
+                    pass
+                return False
+
+            # Final fallback: try pygetwindow title matching
+            try:
+                import pygetwindow as gw
+                titles = ['VLC', 'VLC (Direct3D11 output)']
+                for t in titles:
+                    try:
+                        wins = gw.getWindowsWithTitle(t) or []
+                        if wins:
+                            for w in wins:
+                                try:
+                                    try:
+                                        w.restore()
+                                    except Exception:
+                                        pass
+                                    try:
+                                        w.maximize()
+                                    except Exception:
+                                        pass
+                                    try:
+                                        w.activate()
+                                    except Exception:
+                                        pass
+                                except Exception:
+                                    pass
+                            return True
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+            # Final Win32 fallback
+            try:
+                user32 = ctypes.WinDLL('user32', use_last_error=True)
+                EnumWindows = user32.EnumWindows
+                EnumWindowsProc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+                GetWindowTextLength = user32.GetWindowTextLengthW
+                GetWindowText = user32.GetWindowTextW
+                IsWindowVisible = user32.IsWindowVisible
+                ShowWindow = user32.ShowWindow
+                SetForegroundWindow = user32.SetForegroundWindow
+
+                def foreach(hwnd, lparam):
+                    if not IsWindowVisible(hwnd):
+                        return True
+                    length = GetWindowTextLength(hwnd)
+                    if length == 0:
+                        return True
+                    buf = ctypes.create_unicode_buffer(length + 1)
+                    GetWindowText(hwnd, buf, length + 1)
+                    txt = buf.value
+                    if 'vlc' in txt.lower():
+                        SW_MAXIMIZE = 3
+                        try:
+                            ShowWindow(hwnd, SW_MAXIMIZE)
+                        except Exception:
+                            pass
+                        try:
+                            SetForegroundWindow(hwnd)
+                        except Exception:
+                            pass
+                        return False
+                    return True
+
+                EnumWindows(EnumWindowsProc(foreach), 0)
+                return True
+            except Exception:
+                pass
+
+            return False
+
+        try:
+            attempt(attempts)
+        except Exception:
+            pass
     
     def start_status_thread(self):
         """Start thread to monitor playback status"""
@@ -149,21 +256,46 @@ class MediaPanel:
     def play(self):
         if not VLC_AVAILABLE:
             return
-        
+
         # Check if playback is allowed
         if not self.coordinator.can_play_media():
             try:
-                from tkinter import messagebox
-                messagebox.showwarning("Playback Blocked",
-                                     "Cannot play: outstanding schedule items or active call.",
-                                     parent=self.parent)
+                # Determine the reason(s) for blocking
+                try:
+                    with self.coordinator.lock:
+                        outstanding = bool(self.coordinator.outstanding_items)
+                        active_call = bool(self.coordinator.active_call)
+                except Exception:
+                    outstanding = False
+                    active_call = False
+
+                parts = []
+                if outstanding:
+                    parts.append("outstanding schedule items")
+                if active_call:
+                    parts.append("an active call")
+                if not parts:
+                    parts_text = "playback is currently blocked"
+                else:
+                    parts_text = ' and '.join(parts)
+
+                title = "Playback Blocked"
+                message = f"Cannot play — {parts_text}."
+
+                # Use a large, transient popup so it's visible and auto-dismisses
+                try:
+                    self._show_transient_popup(message, duration=3000)
+                except Exception:
+                    # Fallback to messagebox if popup creation fails
+                    from tkinter import messagebox
+                    messagebox.showwarning(title, message, parent=self.parent)
             except Exception:
                 pass
             return
-        
+
         if self.current_media_list is None:
             self.full_random_playlist()
-        
+
         # Resume from saved position if enabled
         if self.config.get('auto_resume', True) and self.current_position > 0:
             try:
@@ -173,16 +305,28 @@ class MediaPanel:
                     player.release()
             except Exception as e:
                 logging.error(f"Error resuming position: {e}")
-        
-        self.player.play()
-        self.is_playing = True
+
         try:
+            self.player.play()
+            self.is_playing = True
             player = self.player.get_media_player()
             if player:
-                player.set_fullscreen(True)
-                player.release()
-        except Exception:
-            pass
+                try:
+                    player.set_fullscreen(True)
+                finally:
+                    try:
+                        player.release()
+                    except Exception:
+                        pass
+            # Ensure fullscreen is applied even if player isn't immediately available
+            try:
+                # Try immediately and also schedule retries
+                self._ensure_fullscreen_attempts(5, 300)
+                self.parent.after(300, lambda: self._ensure_fullscreen_attempts(5, 300))
+            except Exception:
+                pass
+        except Exception as e:
+            logging.error(f"Error starting playback: {e}")
     
     def pause(self):
         if not VLC_AVAILABLE:
@@ -268,6 +412,68 @@ class MediaPanel:
         movie_list = movie_list[:min(2, len(movie_list))]
         
         self.media_quick_list = series_list + movie_list
+
+    def build_ui(self):
+        """Restore original layout: large control buttons and quick access list."""
+        frame = tk.Frame(self.parent)
+        frame.pack(fill='both', expand=True)
+
+        # Playback buttons (vertical layout)
+        self.play_button = ttk.Button(frame, text="Play", command=self.play)
+        self.play_button.pack(pady=5)
+        
+        self.pause_button = ttk.Button(frame, text="Pause", command=self.pause)
+        self.pause_button.pack(pady=5)
+        
+        self.rewind_button = ttk.Button(frame, text="Rewind 30s", command=self.rewind_30s)
+        self.rewind_button.pack(pady=5)
+        
+        self.ff_button = ttk.Button(frame, text="Fast Forward 30s", command=self.fast_forward_30s)
+        self.ff_button.pack(pady=5)
+        
+        self.prev_button = ttk.Button(frame, text="Previous", command=self.previous_in_playlist)
+        self.prev_button.pack(pady=5)
+        
+        self.next_button = ttk.Button(frame, text="Next", command=self.next_in_playlist)
+        self.next_button.pack(pady=5)
+        
+        self.random_button = ttk.Button(frame, text="Random", command=self.random_in_playlist)
+        self.random_button.pack(pady=5)
+
+        # Minimise video button
+        try:
+            self.minimise_button = ttk.Button(frame, text="Minimise Video", command=self.hide_window)
+            self.minimise_button.pack(pady=5)
+        except Exception:
+            pass
+
+        # Series / Movies combos
+        self.playlist_series_combo = ttk.Combobox(frame, values=[sa.name for sa in self.series_available], font="Verdana 12 bold")
+        self.playlist_series_combo.pack(pady=5)
+        self.playlist_series_combo.bind("<<ComboboxSelected>>", self.change_playlist_combo_series)
+        
+        self.playlist_movies_combo = ttk.Combobox(frame, values=[ma.name for ma in self.movies_available], font="Verdana 12 bold")
+        self.playlist_movies_combo.pack(pady=5)
+        self.playlist_movies_combo.bind("<<ComboboxSelected>>", self.change_playlist_combo_movie)
+        
+        # Reshuffle quick access button
+        self.reshuffle_button = ttk.Button(frame, text="Reshuffle Shows", command=self.reshuffle_quick_access)
+        self.reshuffle_button.pack(pady=5)
+        
+        # Quick access buttons
+        ttk.Label(frame, text="Quick Access:").pack(pady=(10,5))
+        self.quick_access_frame = tk.Frame(frame)
+        self.quick_access_frame.pack(pady=5)
+        self.individual_buttons = []        
+
+        try:
+            self.update_quick_access_buttons()
+        except Exception:
+            pass
+
+        # (Settings button removed per user request)
+
+        # (Removed inline status label and progress bar per user request)
     
     def reshuffle_quick_access(self):
         self.load_media_options()
@@ -288,8 +494,8 @@ class MediaPanel:
         self.current_folder = folder
         video_fn_list = self.find_video_files(self.current_folder)
         self.set_playlist(video_fn_list)
+        # Play a random item from the newly set playlist (respecting coordinator)
         self.random_in_playlist()
-        self.play()
     
     def set_playlist(self, fn_list):
         media_list = self.vlc_instance.media_list_new()
@@ -315,10 +521,70 @@ class MediaPanel:
         self.play()
     
     def random_in_playlist(self):
-        if self.current_media_list and self.current_media_list.count() > 0:
+        if not VLC_AVAILABLE:
+            return
+
+        if not (self.current_media_list and self.current_media_list.count() > 0):
+            return
+
+        # Respect coordinator state before starting playback
+        try:
+            if not self.coordinator.can_play_media():
+                # Determine reason(s)
+                try:
+                    with self.coordinator.lock:
+                        outstanding = bool(self.coordinator.outstanding_items)
+                        active_call = bool(self.coordinator.active_call)
+                except Exception:
+                    outstanding = False
+                    active_call = False
+
+                parts = []
+                if outstanding:
+                    parts.append("outstanding schedule items")
+                if active_call:
+                    parts.append("an active call")
+                if not parts:
+                    parts_text = "playback is currently blocked"
+                else:
+                    parts_text = ' and '.join(parts)
+                message = f"Cannot play — {parts_text}."
+                try:
+                    self._show_transient_popup(message, duration=3000)
+                except Exception:
+                    from tkinter import messagebox
+                    messagebox.showwarning("Playback Blocked", message, parent=self.parent)
+                return
+        except Exception:
+            # If coordinator check fails, be conservative and do not start
+            return
+
+        try:
             self.player.stop()
             random_index = random.randint(0, self.current_media_list.count() - 1)
             self.player.play_item_at_index(random_index)
+            self.is_playing = True
+            try:
+                player = self.player.get_media_player()
+                if player:
+                    player.set_fullscreen(True)
+                    player.release()
+            except Exception:
+                pass
+        except Exception as e:
+            logging.error(f"Error starting random item: {e}")
+
+    def previous_in_playlist(self):
+        """Go to previous item in playlist, if supported."""
+        try:
+            # libvlc media_list_player has no direct previous; try the underlying player
+            try:
+                self.player.previous()
+            except Exception:
+                # fallback: stop and play item at index -1 isn't practical; ignore
+                pass
+        except Exception as e:
+            logging.error(f"Error going to previous: {e}")
     
     def change_playlist_combo_series(self, event):
         selected_folder = self.playlist_series_combo.get()
@@ -351,9 +617,42 @@ class MediaPanel:
         if not VLC_AVAILABLE:
             return
         try:
-            player = self.player.get_media_player()
+            player = None
+            try:
+                player = self.player.get_media_player()
+            except Exception:
+                player = None
+
+            # First attempt: set fullscreen via libvlc media player
             if player:
-                player.set_fullscreen(True)
-                player.release()
+                try:
+                    player.set_fullscreen(True)
+                    player.release()
+                    return
+                except Exception:
+                    try:
+                        player.release()
+                    except Exception:
+                        pass
+
+            # Fallback: use window manager to maximize/activate the VLC window
+            try:
+                import pygetwindow as gw
+                vlc_windows = gw.getWindowsWithTitle('VLC') or []
+                for window in vlc_windows:
+                    try:
+                        # Try to restore and maximize, then activate
+                        if window.isMinimized:
+                            window.restore()
+                        window.maximize()
+                        window.activate()
+                    except Exception:
+                        try:
+                            window.activate()
+                        except Exception:
+                            pass
+                return
+            except Exception:
+                pass
         except Exception as e:
             logging.error(f"Error showing fullscreen: {e}")

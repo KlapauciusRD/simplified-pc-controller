@@ -23,6 +23,12 @@ class TeamsMonitor:
         self.coordinator = coordinator
         self.running = False
         self.thread = None
+        # Stabilize call detection: require consecutive positives/negatives
+        self._call_detect_counter = 0
+        self._call_clear_counter = 0
+        # Require multiple consecutive detections to flip state (reduce false positives)
+        self._detect_threshold = 4
+        self._clear_threshold = 4
         
     def start(self):
         """Start monitoring thread"""
@@ -54,9 +60,23 @@ class TeamsMonitor:
                 if AUTOMATION_AVAILABLE:
                     self._check_incoming_calls()
                 
-                # Check if Teams call is active
-                call_active = self._is_teams_call_active()
-                self.coordinator.set_call_active(call_active)
+                # Check if Teams call is active (stabilized)
+                detected = self._is_teams_call_active()
+
+                if detected:
+                    self._call_detect_counter += 1
+                    self._call_clear_counter = 0
+                else:
+                    self._call_clear_counter += 1
+                    self._call_detect_counter = 0
+
+                logging.debug(f"TeamsMonitor detection={detected} detect_count={self._call_detect_counter} clear_count={self._call_clear_counter}")
+
+                # Only flip coordinator state after threshold
+                if self._call_detect_counter >= self._detect_threshold:
+                    self.coordinator.set_call_active(True)
+                elif self._call_clear_counter >= self._clear_threshold:
+                    self.coordinator.set_call_active(False)
                 
             except Exception as e:
                 logging.error(f"Teams monitor error: {e}")

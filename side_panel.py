@@ -41,33 +41,52 @@ class SidePanel:
         lblm.pack(pady=(10, 4))
         
         self.med_vars = {}
+        # Container for medication rows so we can add ad-hoc meds at runtime
+        meds_frame = tk.Frame(self.parent)
+        meds_frame.pack(fill=tk.X)
+        self._meds_container = meds_frame
+
+        # Render configured medications (defaults + any configured meds)
         for med in self.schedule_panel.medications:
-            frame = tk.Frame(self.parent)
-            frame.pack(fill=tk.X, pady=2, padx=6)
-            
-            mlabel = tk.Label(frame, text=med.get("name"), font=self.side_med_font)
-            mlabel.pack(side=tk.LEFT)
-            
             mid = med.get("id")
-            taken_list = self.schedule_panel.log.get("_meds", {}).get(mid, {}).get("taken") or []
-            last_taken = ""
-            if isinstance(taken_list, list) and taken_list:
-                try:
-                    lt = datetime.datetime.fromisoformat(taken_list[-1])
-                    last_taken = lt.strftime("%H:%M")
-                except Exception:
-                    pass
-            
-            var = tk.StringVar(value=last_taken)
-            mchk = tk.Label(frame, textvariable=var, font=("Segoe UI", 14), width=3)
-            mchk.pack(side=tk.RIGHT)
-            
-            mbtn = tk.Button(frame, text="Taken", font=self.side_small_font,
-                           command=lambda mid=mid: self.record_med_taken(mid))
-            mbtn.pack(side=tk.RIGHT, padx=6)
-            
-            self.med_vars[mid] = var
-        
+            name = med.get("name")
+            self._create_med_row(mid, name)
+
+        # Render ad-hoc other medications stored in today's log
+        for om in self.schedule_panel.log.get("_other_meds", []):
+            if isinstance(om, dict):
+                mid = om.get("id")
+                name = om.get("name")
+            elif isinstance(om, str):
+                name = om
+                mid = om.strip().lower().replace(" ", "_")
+            else:
+                continue
+            self._create_med_row(mid, name)
+
+        # Add button to create a new ad-hoc medication and quick 'Other' recorder
+        add_frame = tk.Frame(self.parent)
+        add_frame.pack(fill=tk.X, padx=6, pady=(4, 8))
+
+        other_btn = tk.Button(add_frame, text="Other", font=self.side_small_font,
+                      command=self.record_other_quick)
+        other_btn.pack(side=tk.LEFT, padx=6)
+
+        # Visible log for ad-hoc 'other' medication records
+        other_log_lbl = tk.Label(self.parent, text="Other Meds Log", font=self.side_small_font)
+        other_log_lbl.pack(padx=6, anchor="w")
+        self._other_log_text = tk.Text(self.parent, height=5, font=("Segoe UI", 9))
+        self._other_log_text.pack(fill=tk.X, padx=6, pady=(0,8))
+        # Load existing other meds entries into the log view
+        for entry in self.schedule_panel.log.get("_other_meds_entries", []):
+            try:
+                ts = entry.get("ts")
+                name = entry.get("name")
+                t = datetime.datetime.fromisoformat(ts)
+                self._other_log_text.insert(tk.END, f"{t.strftime('%H:%M')} - {name}\n")
+            except Exception:
+                pass
+
         # Notes for today
         lbl_notes = tk.Label(self.parent, text="Notes for Today", font=self.side_label_font)
         lbl_notes.pack(pady=(8, 4))
@@ -132,8 +151,123 @@ class SidePanel:
                 v.set(lt.strftime("%H:%M"))
             except Exception:
                 pass
-        
+
         self.schedule_panel.save_log()
+
+        # Update history display (if present)
+        hist_var = getattr(self, 'med_history_vars', {}).get(med_id)
+        if hist_var is not None:
+            try:
+                taken_list = self.schedule_panel.log.get("_meds", {}).get(med_id, {}).get("taken") or []
+                last_items = []
+                for tiso in taken_list[-5:]:
+                    try:
+                        t = datetime.datetime.fromisoformat(tiso)
+                        last_items.append(t.strftime('%H:%M'))
+                    except Exception:
+                        pass
+                hist_var.set(', '.join(last_items))
+            except Exception:
+                pass
+
+    def add_other_med(self):
+        """Prompt for a medication name and add it to today's other meds."""
+        name = tk.simpledialog.askstring("Add Medication", "Medication name:", parent=self.parent)
+        if not name:
+            return
+        mid = name.strip().lower().replace(" ", "_")
+
+        # Ensure _other_meds exists and does not already contain this med
+        other = self.schedule_panel.log.setdefault("_other_meds", [])
+        if any((isinstance(x, dict) and x.get("id") == mid) or (isinstance(x, str) and x.strip().lower().replace(" ", "_") == mid) for x in other):
+            messagebox.showinfo("Exists", "Medication already exists.", parent=self.parent)
+            return
+
+        other.append({"id": mid, "name": name.strip()})
+
+        # Ensure there's an entry in _meds mapping for history
+        meds_map = self.schedule_panel.log.setdefault("_meds", {})
+        meds_map.setdefault(mid, {"taken": []})
+        self.schedule_panel.save_log()
+
+        # Create the UI row for the new med
+        self._create_med_row(mid, name.strip())
+
+    def record_other_quick(self):
+        """Prompt for a medication name and record an ad-hoc administration immediately."""
+        name = tk.simpledialog.askstring("Other Medication", "Medication taken (e.g. 'Paracetamol 500mg'):", parent=self.parent)
+        if not name:
+            return
+
+        ts = datetime.datetime.now().isoformat()
+        entries = self.schedule_panel.log.setdefault("_other_meds_entries", [])
+        entries.append({"ts": ts, "name": name})
+        self.schedule_panel.save_log()
+
+        # Append to visible other meds log
+        try:
+            t = datetime.datetime.fromisoformat(ts)
+            self._other_log_text.insert(tk.END, f"{t.strftime('%H:%M')} - {name}\n")
+        except Exception:
+            try:
+                self._other_log_text.insert(tk.END, f"{ts} - {name}\n")
+            except Exception:
+                pass
+
+    def _create_med_row(self, med_id, name):
+        """Create a medication row in the meds container and register its var."""
+        # Avoid duplicating rows
+        if med_id in self.med_vars:
+            return
+        container = tk.Frame(self._meds_container)
+        container.pack(fill=tk.X, pady=2, padx=6)
+
+        top = tk.Frame(container)
+        top.pack(fill=tk.X)
+
+        mlabel = tk.Label(top, text=name, font=self.side_med_font)
+        mlabel.pack(side=tk.LEFT)
+
+        taken_list = self.schedule_panel.log.get("_meds", {}).get(med_id, {}).get("taken") or []
+        last_taken = ""
+        if isinstance(taken_list, list) and taken_list:
+            try:
+                lt = datetime.datetime.fromisoformat(taken_list[-1])
+                last_taken = lt.strftime("%H:%M")
+            except Exception:
+                pass
+
+        var = tk.StringVar(value=last_taken)
+        mchk = tk.Label(top, textvariable=var, font=("Segoe UI", 14), width=3)
+        mchk.pack(side=tk.RIGHT)
+
+        mbtn = tk.Button(top, text="Taken", font=self.side_small_font,
+                         command=lambda mid=med_id: self.record_med_taken(mid))
+        mbtn.pack(side=tk.RIGHT, padx=6)
+
+        # History label under the med row (shows recent administrations)
+        hist_var = tk.StringVar()
+        hist_label = tk.Label(container, textvariable=hist_var, font=self.side_small_font, anchor='w')
+        hist_label.pack(fill=tk.X)
+
+        # Initialize history value
+        try:
+            last_items = []
+            for tiso in taken_list[-5:]:
+                try:
+                    t = datetime.datetime.fromisoformat(tiso)
+                    last_items.append(t.strftime('%H:%M'))
+                except Exception:
+                    pass
+            hist_var.set(', '.join(last_items))
+        except Exception:
+            hist_var.set('')
+
+        self.med_vars[med_id] = var
+        # Store history var for updates
+        if not hasattr(self, 'med_history_vars'):
+            self.med_history_vars = {}
+        self.med_history_vars[med_id] = hist_var
     
     def save_today_notes(self):
         try:
