@@ -30,7 +30,7 @@
         }
     ],
     "weekday_overrides": {},
-    "water_goal": 8,
+    "water_goal": 2,
     "medication_schedule": [
         "Morning (08:00)",
         "Evening (20:00)"
@@ -39,27 +39,28 @@
         "Vitamin D",
         "Magnesium"
     ],
-    "teams_buttons": [
+    "quick_calls": [
         {
-            "label": "Mom",
-            "url": ""
+            "name": "Liz",
+            "user": "mackay.liz@gmail.com"
         },
         {
-            "label": "Dad",
-            "url": ""
+            "name": "Chris",
+            "user": "cks.williams@gmail.com"
         },
         {
-            "label": "Work",
-            "url": ""
+            "name": "Work",
+            "user": "colleague@company.com"
         },
         {
-            "label": "Friend",
-            "url": ""
+            "name": "Friend",
+            "user": "friend@example.com"
         }
     ],
     "series_dir": "D:/video/series",
     "movies_dir": "D:/video/movies",
     "auto_resume": true,
     "fullscreen": false,
-    "font_size": 14
+    "font_size": 14,
+    "pause_on_outstanding": false
 }

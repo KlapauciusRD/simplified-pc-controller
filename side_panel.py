@@ -312,11 +312,18 @@ class SidePanel:
         if not cfg:
             messagebox.showinfo("Not configured",
                               f"No target configured for Call {idx+1}.\n\n"
-                              "Add a `quick_calls` entry in config.json with users or url.",
+                              "Add a `quick_calls` entry in config.json with 'name' and 'user' (email or Teams ID).",
                               parent=self.parent)
             return
         
+        # Validate config has user identifier
+        user = cfg.get('user') or cfg.get('email') or cfg.get('id')
+        if not user:
+            messagebox.showerror("Invalid config",
+                              f"Call button {idx+1} needs a 'user', 'email', or 'id' field.\n\n"
+                              "Example: {{\"name\": \"Mom\", \"user\": \"mom@example.com\"}}",
+                              parent=self.parent)
+            return
+        
+        name = cfg.get('name', user)
         self.coordinator.request_call(cfg)
-        messagebox.showinfo("Call requested",
-                          f"Teams call requested. Auto-join will attempt to connect.",
-                          parent=self.parent)

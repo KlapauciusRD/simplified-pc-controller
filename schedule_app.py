@@ -1,5 +1,6 @@
 import json
 import datetime
+import logging
 import threading
 import shutil
 from pathlib import Path
@@ -7,6 +8,22 @@ import tkinter as tk
 from tkinter import simpledialog, messagebox
 import webbrowser
 from urllib.parse import quote
+
+# Configure logging so debug/info from this module is available in the
+# shared `vlc_controller.log` and also shown on console during development.
+logging.basicConfig(filename='vlc_controller.log', level=logging.INFO,
+                    format='%(asctime)s - %(levelname)s - %(message)s')
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+logging.getLogger().addHandler(console_handler)
+try:
+    # Also write to the existing `daily_assistant.log` if present/used by the app
+    file_handler2 = logging.FileHandler('daily_assistant.log')
+    file_handler2.setLevel(logging.INFO)
+    file_handler2.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+    logging.getLogger().addHandler(file_handler2)
+except Exception:
+    pass
 
 HERE = Path(__file__).parent
 CONFIG_PATH = HERE / "schedule.json"
@@ -52,9 +69,27 @@ class ScheduleApp:
         self.schedule_midnight()
 
     def load_config(self):
+        cfg = {}
         if CONFIG_PATH.exists():
-            return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-        return {}
+            try:
+                cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+            except Exception:
+                cfg = {}
+
+        # If some keys (like water_goal) are defined in the legacy top-level
+        # `config.json`, merge them in when missing from schedule.json so
+        # users who edited the other config still see their settings.
+        other_cfg_path = HERE / "config.json"
+        if other_cfg_path.exists():
+            try:
+                other = json.loads(other_cfg_path.read_text(encoding="utf-8"))
+                for k, v in other.items():
+                    if k not in cfg:
+                        cfg[k] = v
+            except Exception:
+                pass
+
+        return cfg
 
     def parse_schedule(self, sched):
         out = []
@@ -192,6 +227,7 @@ class ScheduleApp:
         lblm.pack(pady=(10,4))
         self.med_vars = {}
         self.med_hist_widgets = {}
+        self.med_label_widgets = {}
         for med in self.medications:
             frame = tk.Frame(parent)
             frame.pack(fill=tk.X, pady=2, padx=6)
@@ -213,6 +249,7 @@ class ScheduleApp:
             var = tk.StringVar(master=self.root, value=(last_taken if last_taken else ""))
             mchk = tk.Label(frame, textvariable=var, font=("Segoe UI", 14), width=3)
             mchk.pack(side=tk.RIGHT)
+            self.med_label_widgets[mid] = mchk
             mbtn = tk.Button(frame, text="Taken", font=side_small_font, command=lambda mid=med.get("id"): self.record_med_taken(mid))
             mbtn.pack(side=tk.RIGHT, padx=6)
             self.med_vars[med.get("id")] = var
@@ -220,6 +257,11 @@ class ScheduleApp:
             hist = tk.Listbox(parent, height=3, font=side_small_font)
             hist.pack(fill=tk.X, padx=12, pady=(0,8))
             self.med_hist_widgets[med.get("id")] = hist
+            # set initial color state for the med label
+            try:
+                self._refresh_med_color(med.get("id"))
+            except Exception:
+                pass
             # populate history from log
             taken_list = self.log.get("_meds", {}).get(med.get("id"), {}).get("taken") or []
             for t in taken_list:
@@ -398,6 +440,26 @@ class ScheduleApp:
         entry["count"] = entry.get("count", 0) + 1
         entry.setdefault("entries", []).append(datetime.datetime.now().isoformat())
         self.save_log()
+
+        # Temporary non-blocking popup for debugging: auto-dismisses after 1.5s
+        try:
+            popup = tk.Toplevel(self.root)
+            popup.overrideredirect(True)
+            popup.attributes('-topmost', True)
+            msg = f"Recorded {med_id} at {datetime.datetime.now().strftime('%H:%M:%S')}"
+            lbl = tk.Label(popup, text=msg, font=("Segoe UI", 12), bg="#ffd")
+            lbl.pack(ipadx=8, ipady=6)
+            # Position near top-left of main window
+            try:
+                self.root.update_idletasks()
+                x = self.root.winfo_rootx() + 40
+                y = self.root.winfo_rooty() + 40
+                popup.geometry(f"+{x}+{y}")
+            except Exception:
+                pass
+            popup.after(1500, popup.destroy)
+        except Exception:
+            pass
         self.update_water_var()
 
     def reset_water(self):
@@ -412,6 +474,7 @@ class ScheduleApp:
         self.record_med_taken(med_id)
 
     def record_med_taken(self, med_id):
+        logging.info(f"record_med_taken called for med_id={med_id}")
         meds = self.log.setdefault("_meds", {})
         cur = meds.setdefault(med_id, {"taken": []})
         # append ISO timestamp
@@ -437,6 +500,12 @@ class ScheduleApp:
                 v.set(lt.strftime("%H:%M"))
             except Exception:
                 v.set("")
+        # refresh color based on timeout rules
+        try:
+            self._refresh_med_color(med_id)
+        except Exception as e:
+            logging.exception(f"_refresh_med_color failed for {med_id}: {e}")
+            pass
         # also append to history widget if present
         hist = self.med_hist_widgets.get(med_id)
         if hist is not None:
@@ -462,6 +531,41 @@ class ScheduleApp:
             except Exception:
                 pass
         self.save_log()
+
+    def _refresh_med_color(self, med_id):
+        """Update the med timestamp label color based on last taken time and rules.
+
+        Paracetamol: red if last taken less than 4 hours ago.
+        Ibuprofen: red if last taken less than 6 hours ago.
+        """
+        try:
+            lbl = self.med_label_widgets.get(med_id)
+            logging.debug(f"_refresh_med_color for {med_id}, lbl={'yes' if lbl else 'no'}")
+            if not lbl:
+                return
+            meds = self.log.get("_meds", {})
+            entry = meds.get(med_id, {})
+            taken = entry.get("taken") or []
+            if not taken:
+                lbl.configure(fg="black")
+                return
+            try:
+                last = datetime.datetime.fromisoformat(taken[-1])
+            except Exception:
+                lbl.configure(fg="black")
+                return
+            now = datetime.datetime.now()
+            delta = now - last
+            hours = delta.total_seconds() / 3600.0
+            warn = False
+            if med_id == 'paracetamol' and hours < 4:
+                warn = True
+            if med_id == 'ibuprofen' and hours < 6:
+                warn = True
+            lbl.configure(fg=("red" if warn else "black"))
+            logging.info(f"_refresh_med_color {med_id}: last={last.isoformat()}, hours={hours:.2f}, warn={warn}")
+        except Exception:
+            logging.exception("Error in _refresh_med_color")
 
     def toggle_check(self, item):
         cur = self.log.setdefault(item["id"], {"checked": False, "note": ""})

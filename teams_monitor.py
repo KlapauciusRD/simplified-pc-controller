@@ -83,47 +83,125 @@ class TeamsMonitor:
             
             time.sleep(1)
     
-    def _process_call_request(self, call_url):
-        """Process outbound call request from UI"""
+    def _process_call_request(self, call_config):
+        """Process outbound call request from UI - open chat and start audio call"""
         try:
-            logging.info(f"Processing call request: {call_url}")
+            # Extract user identifier (email, ID, or SIP address)
+            user = call_config.get('user') or call_config.get('email') or call_config.get('id')
+            name = call_config.get('name', 'contact')
             
-            # Open Teams URL
-            webbrowser.open(call_url)
-            time.sleep(3)
+            if not user:
+                logging.error("Call request missing user identifier")
+                return
             
-            # Try to auto-join (best effort)
+            logging.info(f"Opening chat with {user} ({name})")
+            
+            # Open chat with the user - reliable across all Teams versions/platforms
+            chat_url = f"https://teams.microsoft.com/l/chat/0/0?users={user}"
+            webbrowser.open(chat_url)
+            
+            # Wait longer for Teams to fully load the chat UI
+            logging.info("Waiting for Teams chat to load...")
+            time.sleep(4)
+            
+            # Attempt to start audio call automatically
             if AUTOMATION_AVAILABLE:
-                self._auto_join_attempt()
+                success = self._start_audio_call()
+                if success:
+                    logging.info(f"Call initiated to {name} (video with audio fallback)")
+                    self.coordinator.last_call_opened = {'user': user, 'name': name, 'success': True}
+                else:
+                    logging.warning(f"Audio call automation failed for {name}")
+                    self.coordinator.last_call_opened = {'user': user, 'name': name, 'success': False}
+            else:
+                logging.info(f"Chat opened with {name} - automation not available")
+                self.coordinator.last_call_opened = {'user': user, 'name': name, 'success': False}
             
         except Exception as e:
             logging.error(f"Error processing call request: {e}")
     
-    def _auto_join_attempt(self):
-        """Attempt to auto-join meeting (brittle - depends on Teams UI)"""
+    # Removed fragile auto-click automation - chat opens and user manually clicks video button
+    # This is more reliable and works regardless of webcam, Teams version, or UI layout
+    
+    def _start_audio_call(self):
+        """Attempt to start a call in the opened Teams chat (tries video then audio)"""
         if not AUTOMATION_AVAILABLE:
-            return
+            return False
         
         try:
-            # Wait for Teams window
-            time.sleep(2)
+            # Find Teams window
+            teams_windows = gw.getWindowsWithTitle('Teams')
+            if not teams_windows:
+                logging.debug("No Teams window found")
+                return False
             
-            # Try to find and click join button
-            join_button = pyautogui.locateOnScreen('join_button.png', confidence=0.8)
-            if join_button:
-                button_center = pyautogui.center(join_button)
-                pyautogui.click(button_center)
-                logging.info("Auto-join: clicked join button")
-                time.sleep(1)
-                
-                # Try to click "join now" button
-                join_now = pyautogui.locateOnScreen('join_now_button.png', confidence=0.8)
-                if join_now:
-                    button_center = pyautogui.center(join_now)
-                    pyautogui.click(button_center)
-                    logging.info("Auto-join: clicked join now")
+            tw = teams_windows[0]
+            
+            # Activate/bring to front
+            try:
+                tw.activate()
+            except Exception:
+                try:
+                    tw.maximize()
+                except Exception:
+                    pass
+            
+            time.sleep(0.5)
+            
+            # Click in the center-bottom area where message input usually is
+            # This ensures focus is in the chat, not search box
+            msg_box_x = tw.left + (tw.width // 2)
+            msg_box_y = tw.top + tw.height - 100  # Near bottom where message box is
+            
+            try:
+                pyautogui.click(msg_box_x, msg_box_y)
+                logging.debug(f"Clicked message area at ({msg_box_x}, {msg_box_y})")
+                time.sleep(0.5)
+            except Exception as e:
+                logging.debug(f"Could not click message area: {e}")
+            
+            # Try video call first (Alt+Shift+V), then audio as backup (Alt+Shift+A)
+            logging.info("Sending video call hotkey (Alt+Shift+V)")
+            try:
+                pyautogui.hotkey('alt', 'shift', 'v')
+            except Exception:
+                try:
+                    pyautogui.keyDown('alt')
+                    pyautogui.keyDown('shift')
+                    pyautogui.press('v')
+                    pyautogui.keyUp('shift')
+                    pyautogui.keyUp('alt')
+                except Exception as e:
+                    logging.debug(f"Video hotkey failed: {e}")
+            
+            time.sleep(0.8)
+            
+            # Backup: audio call (Alt+Shift+A)
+            logging.info("Sending audio call hotkey (Alt+Shift+A) as backup")
+            try:
+                pyautogui.hotkey('alt', 'shift', 'a')
+            except Exception:
+                try:
+                    pyautogui.keyDown('alt')
+                    pyautogui.keyDown('shift')
+                    pyautogui.press('a')
+                    pyautogui.keyUp('shift')
+                    pyautogui.keyUp('alt')
+                except Exception as e:
+                    logging.error(f"Audio hotkey failed: {e}")
+                    return False
+            
+            logging.info("Call hotkeys sent successfully")
+            return True
+            
         except Exception as e:
-            logging.debug(f"Auto-join attempt failed (expected): {e}")
+            logging.error(f"Error starting audio call: {e}")
+            return False
+    
+    # Auto-join functionality removed - only auto-answer incoming calls
+    # def _auto_join_attempt(self):
+    #     """DISABLED: Auto-join meetings is not used"""
+    #     pass
     
     def _check_incoming_calls(self):
         """Check for incoming Teams calls"""

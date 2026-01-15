@@ -447,15 +447,7 @@ class MediaPanel:
         except Exception:
             pass
 
-        # Series / Movies combos
-        self.playlist_series_combo = ttk.Combobox(frame, values=[sa.name for sa in self.series_available], font="Verdana 12 bold")
-        self.playlist_series_combo.pack(pady=5)
-        self.playlist_series_combo.bind("<<ComboboxSelected>>", self.change_playlist_combo_series)
-        
-        self.playlist_movies_combo = ttk.Combobox(frame, values=[ma.name for ma in self.movies_available], font="Verdana 12 bold")
-        self.playlist_movies_combo.pack(pady=5)
-        self.playlist_movies_combo.bind("<<ComboboxSelected>>", self.change_playlist_combo_movie)
-        
+        # Series / Movies dropdowns removed per user request
         # Reshuffle quick access button
         self.reshuffle_button = ttk.Button(frame, text="Reshuffle Shows", command=self.reshuffle_quick_access)
         self.reshuffle_button.pack(pady=5)

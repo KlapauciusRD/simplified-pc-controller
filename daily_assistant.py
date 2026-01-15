@@ -37,6 +37,11 @@ class DailyAssistantApp:
         
         # Initialize coordinator
         self.coordinator = AppCoordinator()
+        # Apply config to coordinator (e.g., pause_on_outstanding)
+        try:
+            self.coordinator.set_config(self.config)
+        except Exception:
+            pass
         
         # Setup UI
         self.setup_window()
@@ -85,6 +90,9 @@ class DailyAssistantApp:
             # UI settings
             'fullscreen': False,
             'font_size': 14
+            ,
+            # Coordinator behavior
+            'pause_on_outstanding': True
         }
         
         if config_path.exists():
