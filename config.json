@@ -36,7 +36,44 @@
             "description": "Wind down and prepare for sleep"
         }
     ],
-    "weekday_overrides": {},
+    "weekday_overrides": {
+        "Monday": {
+            "extra": [
+                {
+                    "id": "mon_call_sheila",
+                    "time": "20:00",
+                    "title": "Call with Sheila"
+                }
+            ]
+        },
+        "Wednesday": {
+            "extra": [
+                {
+                    "id": "wed_test_event",
+                    "time": "20:15",
+                    "title": "Test Event (Wed 20:00)"
+                }
+            ]
+        },
+        "Thursday": {
+            "extra": [
+                {
+                    "id": "thu_test_event",
+                    "time": "21:00",
+                    "title": "Test Event (Thu 21:00)"
+                }
+            ]
+        },
+        "Sunday": {
+            "extra": [
+                {
+                    "id": "sun_call_sue",
+                    "time": "20:00",
+                    "title": "Call with Sue"
+                }
+            ]
+        }
+    },
     "water_goal": 2,
     "medication_schedule": [
         "Morning (08:00)",

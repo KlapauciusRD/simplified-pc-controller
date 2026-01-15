@@ -23,18 +23,21 @@ class SidePanel:
         self.build_ui()
     
     def build_ui(self):
-        # Water tracker
-        lbl = tk.Label(self.parent, text="Water", font=self.side_label_font)
-        lbl.pack(pady=(6, 4))
-        
+        # Water tracker - label, count, and button all on one row for compactness
+        water_frame = tk.Frame(self.parent)
+        water_frame.pack(fill=tk.X, padx=6, pady=(6, 6))
+
+        lbl = tk.Label(water_frame, text="Water", font=self.side_label_font)
+        lbl.pack(side=tk.LEFT)
+
         self.water_var = tk.StringVar()
         self.update_water_var()
-        water_lbl = tk.Label(self.parent, textvariable=self.water_var, font=self.side_med_font)
-        water_lbl.pack()
-        
-        btn_drink = tk.Button(self.parent, text="Drink", font=self.side_small_font, width=12,
+        water_lbl = tk.Label(water_frame, textvariable=self.water_var, font=self.side_med_font)
+        water_lbl.pack(side=tk.LEFT, padx=(8, 12))
+
+        btn_drink = tk.Button(water_frame, text="Drink", font=self.side_small_font, width=10,
                             command=self.increment_water)
-        btn_drink.pack(pady=6)
+        btn_drink.pack(side=tk.LEFT)
         
         # Medications
         lblm = tk.Label(self.parent, text="Medications", font=self.side_label_font)
@@ -68,13 +71,11 @@ class SidePanel:
         add_frame = tk.Frame(self.parent)
         add_frame.pack(fill=tk.X, padx=6, pady=(4, 8))
 
-        other_btn = tk.Button(add_frame, text="Other", font=self.side_small_font,
-                      command=self.record_other_quick)
+        other_btn = tk.Button(add_frame, text="Add other medication", font=self.side_small_font,
+                  command=self.record_other_quick)
         other_btn.pack(side=tk.LEFT, padx=6)
 
-        # Visible log for ad-hoc 'other' medication records
-        other_log_lbl = tk.Label(self.parent, text="Other Meds Log", font=self.side_small_font)
-        other_log_lbl.pack(padx=6, anchor="w")
+        # Visible log for ad-hoc medication records (label removed per user request)
         self._other_log_text = tk.Text(self.parent, height=5, font=("Segoe UI", 9))
         self._other_log_text.pack(fill=tk.X, padx=6, pady=(0,8))
         # Load existing other meds entries into the log view
@@ -114,14 +115,14 @@ class SidePanel:
         while len(quick_calls) < 4:
             quick_calls.append(None)
         
-        # 2x2 grid layout with larger buttons for touchscreen
+        # 2x2 grid layout with smaller buttons
         for i in range(4):
             cfg = quick_calls[i]
             name = cfg.get("name") if isinstance(cfg, dict) and cfg.get("name") else f"Call {i+1}"
             row = i // 2
             col = i % 2
-            btn = tk.Button(calls_frame, text=name, font=("Segoe UI", 14, "bold"), 
-                          height=2, relief=tk.RAISED, bd=3,
+            btn = tk.Button(calls_frame, text=name, font=("Segoe UI", 12, "bold"), 
+                          height=1, relief=tk.RAISED, bd=2,
                           command=lambda cfg=cfg, idx=i: self.start_teams_call(cfg, idx))
             btn.grid(row=row, column=col, padx=4, pady=4, sticky="ew")
         

@@ -114,7 +114,7 @@ class SchedulePanel:
     
     def apply_overrides(self):
         try:
-            overrides = self.config.get("overrides", {})
+            overrides = self.config.get("weekday_overrides", {})
             wd = datetime.date.today().strftime("%A")
             day_cfg = overrides.get(wd, {})
             extras = day_cfg.get("extra") if isinstance(day_cfg, dict) else None
@@ -190,23 +190,30 @@ class SchedulePanel:
                 lbl_desc.pack(anchor="w")
             
             chk_text = tk.StringVar(value=("✓" if self.log.get(item.get("id"), {}).get("checked") else ""))
-            lbl_check = tk.Label(row, textvariable=chk_text, font=("Segoe UI", 22), width=3)
-            lbl_check.pack(side=tk.LEFT)
-            
+
+            # Combined check icon button (toggles checked state) - compact
+            check_symbol = "✓" if chk_text.get() else "☐"
+            check_btn = tk.Button(row, text=check_symbol, font=("Segoe UI", 18), width=3,
+                                  command=lambda i=item: self.toggle_check(i))
+            check_btn.pack(side=tk.RIGHT, padx=(6, 4))
+
             btn_note = tk.Button(row, text="Notes", font=self.font_small, width=10,
                                command=lambda i=item: self.edit_note(i))
             btn_note.pack(side=tk.RIGHT, padx=6)
-            
-            btn_check = tk.Button(row, text="Check", font=self.font_small, width=10,
-                                command=lambda i=item: self.toggle_check(i))
-            btn_check.pack(side=tk.RIGHT)
-            
-            self.row_widgets[item.get("id")] = {"frame": row, "check_var": chk_text}
+
+            self.row_widgets[item.get("id")] = {"frame": row, "check_var": chk_text, "check_btn": check_btn}
     
     def toggle_check(self, item):
         cur = self.log.setdefault(item["id"], {"checked": False, "note": ""})
         cur["checked"] = not cur.get("checked", False)
         self.row_widgets[item["id"]]["check_var"].set("✓" if cur["checked"] else "")
+        # Update the compact check button symbol if present
+        try:
+            btn = self.row_widgets[item["id"]].get("check_btn")
+            if btn:
+                btn.config(text=("✓" if cur["checked"] else "☐"))
+        except Exception:
+            pass
         self.save_log()
         self.update_outstanding_flag()
     
@@ -232,6 +239,12 @@ class SchedulePanel:
             for item in self.schedule:
                 chk = self.log.get(item["id"], {}).get("checked")
                 self.row_widgets[item["id"]]["check_var"].set("✓" if chk else "")
+                try:
+                    btn = self.row_widgets[item["id"]].get("check_btn")
+                    if btn:
+                        btn.config(text=("✓" if chk else "☐"))
+                except Exception:
+                    pass
         
         self.parent.after(1000, self.update_clock)
     
