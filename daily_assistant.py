@@ -56,7 +56,9 @@ class DailyAssistantApp:
     
     def load_config(self):
         """Load unified configuration"""
-        config_path = Path('config.json')
+        config_path = Path('config.json').resolve()
+        logging.info(f"Loading config from: {config_path}")
+        logging.info(f"Config file exists: {config_path.exists()}")
         
         # Default configuration
         default_config = {
@@ -97,14 +99,25 @@ class DailyAssistantApp:
         
         if config_path.exists():
             try:
-                with open(config_path, 'r') as f:
+                with open(config_path, 'r', encoding='utf-8') as f:
                     loaded_config = json.load(f)
+                    logging.info(f"Loaded config keys: {loaded_config.keys()}")
+                    logging.info(f"Loaded schedule items: {len(loaded_config.get('schedule', []))}")
+                    logging.info(f"Loaded water_goal: {loaded_config.get('water_goal')}")
                     default_config.update(loaded_config)
+                    logging.info(f"Config merged successfully")
             except Exception as e:
-                logging.error(f"Error loading config: {e}")
+                logging.error(f"Error loading config: {e}", exc_info=True)
         else:
-            # Save default config
+            # Save default config only if file doesn't exist
             self.save_config(default_config)
+        
+        # Log the resolved schedule for debugging (helps verify config is used)
+        try:
+            logging.info(f"Resolved schedule: {default_config.get('schedule')}")
+            logging.info(f"Resolved water_goal: {default_config.get('water_goal')}")
+        except Exception:
+            pass
         
         return default_config
     

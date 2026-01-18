@@ -44,7 +44,7 @@ class SchedulePanel:
         self.font_med = ("Segoe UI", max(9, int(base * 0.85)))
         self.font_small = ("Segoe UI", max(8, int(base * 0.75)))
         
-        self.water_goal = self.config.get("water_goal", 3)
+        self.water_goal = self.config.get("water_goal", 2)
 
         # Build medications list for the side panel UI.
         # Support legacy `medications` config, include default painkillers,
