@@ -39,10 +39,10 @@ class SchedulePanel:
         # Compute fonts from config base size for better scaling on large displays
         base = int(self.config.get('font_size', 14))
         self.base = base
-        # Slightly reduce multipliers so text fits better on the target screen
-        self.font_large = ("Segoe UI", max(14, int(base * 1.25)))
-        self.font_med = ("Segoe UI", max(11, int(base * 1.0)))
-        self.font_small = ("Segoe UI", max(9, int(base * 0.85)))
+        # Slightly reduce multipliers so text fits better and allow descriptions to wrap
+        self.font_large = ("Segoe UI", max(12, int(base * 1.0)))
+        self.font_med = ("Segoe UI", max(9, int(base * 0.85)))
+        self.font_small = ("Segoe UI", max(8, int(base * 0.75)))
         
         self.water_goal = self.config.get("water_goal", 3)
 
@@ -62,11 +62,12 @@ class SchedulePanel:
             if not any(x.get("id") == mid for x in meds):
                 meds.append({"id": mid, "name": name})
 
-        ensure_med("paracetamol", "Paracetamol")
-        ensure_med("ibuprofen", "Ibuprofen")
-        # Add hard-coded morning/evening medication entries
+        # Add hard-coded morning/evening medication entries first
         ensure_med("morning", "Morning")
         ensure_med("evening", "Evening")
+        # Ensure basic painkillers are present after the daily meds
+        ensure_med("paracetamol", "Paracetamol")
+        ensure_med("ibuprofen", "Ibuprofen")
 
         # Do NOT pre-load `other_meds` from config; other meds are added
         # ad-hoc by the user at runtime and stored in the daily log.
@@ -164,21 +165,19 @@ class SchedulePanel:
     def build_ui(self):
         # Top header
         top = tk.Frame(self.parent)
-        top.pack(fill=tk.X, padx=10, pady=8)
-        
-        self.date_label = tk.Label(top, text="", font=self.font_large)
-        self.date_label.pack(side=tk.LEFT)
-        
-        # Date and time fonts: make date slightly smaller and time less dominant
-        date_font = ("Segoe UI", max(16, int(self.base * 1.4)))
-        time_font = ("Segoe UI", max(20, int(self.base * 1.8)), "bold")
+        top.pack(fill=tk.X, padx=8, pady=6)
+
+        # Date and time fonts: slightly reduced multipliers for tighter layout
+        date_font = ("Segoe UI", max(14, int(self.base * 1.2)))
+        time_font = ("Segoe UI", max(18, int(self.base * 1.6)), "bold")
         self.date_label = tk.Label(top, text="", font=date_font)
+        self.date_label.pack(side=tk.LEFT)
         self.time_label = tk.Label(top, text="", font=time_font)
         self.time_label.pack(side=tk.RIGHT)
         
         # Schedule list with scrollbar
         list_frame = tk.Frame(self.parent)
-        list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=6)
+        list_frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=4)
         
         canvas = tk.Canvas(list_frame)
         scrollbar = tk.Scrollbar(list_frame, orient=tk.VERTICAL, command=canvas.yview)
@@ -197,11 +196,11 @@ class SchedulePanel:
         self.row_widgets = {}
         
         for item in self.schedule:
-            row = tk.Frame(self.frame, pady=6)
-            row.pack(fill=tk.X, padx=6, pady=4)
+            row = tk.Frame(self.frame, pady=2)
+            row.pack(fill=tk.X, padx=4, pady=1)
             
             time_str = item.get("time").strftime("%H:%M") if item.get("time") else ""
-            lbl_time = tk.Label(row, text=time_str, font=self.font_med, width=8, anchor="w")
+            lbl_time = tk.Label(row, text=time_str, font=self.font_med, width=6, anchor="w")
             lbl_time.pack(side=tk.LEFT)
             
             # Title and description container
@@ -213,22 +212,49 @@ class SchedulePanel:
             
             # Show description if present
             description = item.get("description", "")
-            if description:
-                lbl_desc = tk.Label(text_frame, text=description, font=("Segoe UI", 10), 
-                                   anchor="w", fg="#666")
-                lbl_desc.pack(anchor="w")
+            if description and str(description).strip():
+                # Create description label with a reasonable default wraplength,
+                # then adjust it after geometry has settled so it becomes visible.
+                # Use a slightly darker grey for better contrast and allow the
+                # label to fill available horizontal space so wraplength applies.
+                lbl_desc = tk.Label(text_frame, text=description, font=self.font_small,
+                                   anchor="w", fg="#444", justify="left", wraplength=480)
+                lbl_desc.pack(anchor="w", fill='x')
+
+
+                def adjust_wrap():
+                    try:
+                        self.parent.update_idletasks()
+                        # Prefer the parent's (schedule_frame) width which was set
+                        parent_w = self.parent.winfo_width() or 0
+                        if not parent_w or parent_w < 100:
+                            # fallback to toplevel width
+                            try:
+                                parent_w = self.parent.winfo_toplevel().winfo_width()
+                            except Exception:
+                                parent_w = 800
+
+                        # Subtract time column and check button widths to compute available text area
+                        est_margin = 140
+                        wrap = max(180, int((parent_w - est_margin) * 0.9))
+                        # If calculation produced a small wrap length, ensure a reasonable default
+                        if wrap < 200:
+                            wrap = max(200, int(parent_w * 0.6))
+                        lbl_desc.config(wraplength=wrap)
+                    except Exception:
+                        pass
+
+                # Run a couple of times after layout to capture final geometry
+                self.parent.after(50, adjust_wrap)
+                self.parent.after(300, adjust_wrap)
             
             chk_text = tk.StringVar(value=("✓" if self.log.get(item.get("id"), {}).get("checked") else ""))
 
             # Combined check icon button (toggles checked state) - compact
             check_symbol = "✓" if chk_text.get() else "☐"
 
-            # Notes button placed to the right of the check button
-            btn_note = tk.Button(row, text="Notes", font=self.font_small, width=10,
-                                 command=lambda i=item: self.edit_note(i))
-            btn_note.pack(side=tk.RIGHT, padx=(4, 6))
-
-            check_btn = tk.Button(row, text=check_symbol, font=("Segoe UI", 18), width=3,
+            # Notes button temporarily removed from UI (functionality retained)
+            check_btn = tk.Button(row, text=check_symbol, font=("Segoe UI", 16), width=2,
                                   command=lambda i=item: self.toggle_check(i))
             check_btn.pack(side=tk.RIGHT, padx=(6, 4))
 

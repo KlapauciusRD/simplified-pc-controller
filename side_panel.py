@@ -16,10 +16,10 @@ class SidePanel:
         self.coordinator = coordinator
         self.config = config
         # Scale fonts from config base size for better large-screen layout
-        base = int(self.config.get('font_size', 14))
-        self.side_label_font = ("Segoe UI", max(12, int(base * 1.1)), "bold")
-        self.side_med_font = ("Segoe UI", max(10, int(base * 0.95)))
-        self.side_small_font = ("Segoe UI", max(9, int(base * 0.8)))
+        base = int(self.config.get('font_size', 12))
+        self.side_label_font = ("Segoe UI", max(11, int(base * 1.0)), "bold")
+        self.side_med_font = ("Segoe UI", max(9, int(base * 0.9)))
+        self.side_small_font = ("Segoe UI", max(8, int(base * 0.75)))
         
         self.build_ui()
     

@@ -89,7 +89,7 @@ class DailyAssistantApp:
             # UI settings
             'fullscreen': True,
             'screen_index': 1,
-            'font_size': 14
+            'font_size': 12
             ,
             # Coordinator behavior
             'pause_on_outstanding': True
@@ -176,8 +176,8 @@ class DailyAssistantApp:
             monitor_w = None
 
         if monitor_w:
-            # Use 50/25/25 split to reduce schedule dominance
-            sched_w = int(monitor_w * 0.50)
+            # Use 40/25/35 split: further reduce schedule and expand media panel
+            sched_w = int(monitor_w * 0.40)
             side_w = int(monitor_w * 0.25)
             media_w = monitor_w - sched_w - side_w
         else:

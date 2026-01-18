@@ -1,19 +1,19 @@
 {
     "schedule": [
         {
-            "time": "06:00",
+            "time": "08:00",
             "title": "Wake Up",
-            "description": "Start the day, morning routine"
-        },
-        {
-            "time": "07:00",
-            "title": "Breakfast",
-            "description": "Healthy meal to fuel the morning"
+            "description": "Lights on. Hair, aids, teeth."
         },
         {
             "time": "09:00",
-            "title": "Morning Work",
-            "description": "Focus time for important tasks"
+            "title": "Breakfast",
+            "description": ""
+        },
+        {
+            "time": "09:00",
+            "title": "Exercise",
+            "description": "Fill out exercise worksheet."
         },
         {
             "time": "12:00",
@@ -22,18 +22,23 @@
         },
         {
             "time": "13:00",
-            "title": "Afternoon Work",
-            "description": "Continue productive work"
+            "title": "Nap",
+            "description": "before: charge watch/aids. After: fix hair, wear aids/watch"
         },
         {
-            "time": "18:00",
-            "title": "Dinner",
-            "description": "Evening meal with family"
+            "time": "15:00",
+            "title": "Jobs",
+            "description": "Writing / drawing / catchup"
+        },
+        {
+            "time": "17:00",
+            "title": "Hobbies",
+            "description": "e.g. reading / languages / research / cards"
         },
         {
             "time": "22:00",
-            "title": "Bedtime",
-            "description": "Wind down and prepare for sleep"
+            "title": "Bed",
+            "description": "before: charge aids"
         }
     ],
     "weekday_overrides": {
@@ -98,6 +103,6 @@
     "movies_dir": "D:/video/movies",
     "auto_resume": true,
     "fullscreen": false,
-    "font_size": 14,
+    "font_size": 11,
     "pause_on_outstanding": false
 }

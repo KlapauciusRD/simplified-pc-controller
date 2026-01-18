@@ -380,9 +380,7 @@ class ScheduleApp:
             lbl_check = tk.Label(row, textvariable=chk_text, font=("Segoe UI", 22), width=3)
             lbl_check.pack(side=tk.LEFT)
 
-            btn_note = tk.Button(row, text="Notes", font=self.font_small, width=10, command=lambda i=item: self.edit_note(i))
-            btn_note.pack(side=tk.RIGHT, padx=6)
-
+            # Notes button removed from UI (functionality preserved)
             btn_check = tk.Button(row, text="Check", font=self.font_small, width=10, command=lambda i=item: self.toggle_check(i))
             btn_check.pack(side=tk.RIGHT)
 
