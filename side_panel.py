@@ -15,10 +15,11 @@ class SidePanel:
         self.schedule_panel = schedule_panel
         self.coordinator = coordinator
         self.config = config
-        
-        self.side_label_font = ("Segoe UI", 14, "bold")
-        self.side_med_font = ("Segoe UI", 12)
-        self.side_small_font = ("Segoe UI", 10)
+        # Scale fonts from config base size for better large-screen layout
+        base = int(self.config.get('font_size', 14))
+        self.side_label_font = ("Segoe UI", max(12, int(base * 1.1)), "bold")
+        self.side_med_font = ("Segoe UI", max(10, int(base * 0.95)))
+        self.side_small_font = ("Segoe UI", max(9, int(base * 0.8)))
         
         self.build_ui()
     
@@ -88,21 +89,8 @@ class SidePanel:
             except Exception:
                 pass
 
-        # Notes for today
-        lbl_notes = tk.Label(self.parent, text="Notes for Today", font=self.side_label_font)
-        lbl_notes.pack(pady=(8, 4))
-        
-        self.notes_text = tk.Text(self.parent, height=5, font=("Segoe UI", 11))
-        self.notes_text.pack(fill=tk.X, padx=6, pady=(0, 8))
-        
-        try:
-            self.notes_text.insert("1.0", self.schedule_panel.log.get("_today_notes", ""))
-        except Exception:
-            pass
-        
-        self._notes_autosave_after_id = None
-        self.notes_text.bind('<KeyRelease>', lambda e: self._on_notes_change())
-        self.notes_text.bind('<FocusOut>', lambda e: self.save_today_notes())
+        # Notes for today (removed temporarily)
+        # The notes widget was removed to reclaim space; methods remain safe if called.
         
         # Quick Teams calls
         lbl_calls = tk.Label(self.parent, text="Quick Calls", font=self.side_label_font)
@@ -234,8 +222,15 @@ class SidePanel:
         top = tk.Frame(container)
         top.pack(fill=tk.X)
 
-        mlabel = tk.Label(top, text=name, font=self.side_med_font)
-        mlabel.pack(side=tk.LEFT)
+        # Make the medication name itself the action button (records 'taken')
+        try:
+            mbtn = tk.Button(top, text=name, font=self.side_med_font, relief=tk.FLAT,
+                             command=lambda mid=med_id: self.record_med_taken(mid))
+            mbtn.pack(side=tk.LEFT, padx=(0,6))
+        except Exception:
+            # Fallback to a label if button creation fails
+            mlabel = tk.Label(top, text=name, font=self.side_med_font)
+            mlabel.pack(side=tk.LEFT)
 
         taken_list = self.schedule_panel.log.get("_meds", {}).get(med_id, {}).get("taken") or []
         last_taken = ""
@@ -249,10 +244,6 @@ class SidePanel:
         var = tk.StringVar(value=last_taken)
         mchk = tk.Label(top, textvariable=var, font=("Segoe UI", 14), width=3)
         mchk.pack(side=tk.RIGHT)
-
-        mbtn = tk.Button(top, text="Taken", font=self.side_small_font,
-                         command=lambda mid=med_id: self.record_med_taken(mid))
-        mbtn.pack(side=tk.RIGHT, padx=6)
 
         # History label under the med row (shows recent administrations)
         hist_var = tk.StringVar()
@@ -288,7 +279,11 @@ class SidePanel:
                 self._notes_autosave_after_id = None
         except Exception:
             pass
-        
+
+        # If the notes widget has been removed, do nothing
+        if not hasattr(self, 'notes_text'):
+            return
+
         try:
             txt = self.notes_text.get("1.0", tk.END).strip()
             self.schedule_panel.log["_today_notes"] = txt
@@ -297,6 +292,9 @@ class SidePanel:
             pass
     
     def _on_notes_change(self):
+        # No-op if notes widget removed
+        if not hasattr(self, 'notes_text'):
+            return
         try:
             if getattr(self, '_notes_autosave_after_id', None):
                 try:
@@ -309,6 +307,8 @@ class SidePanel:
     
     def _autosave_notes(self):
         self._notes_autosave_after_id = None
+        if not hasattr(self, 'notes_text'):
+            return
         try:
             txt = self.notes_text.get("1.0", tk.END).strip()
             if txt != self.schedule_panel.log.get("_today_notes", ""):

@@ -14,6 +14,16 @@ HERE = Path(__file__).parent
 LOG_DIR = HERE / "schedule_logs"
 EXPORT_DIR = HERE / "schedule_exports"
 
+# Ensure log and export directories exist
+try:
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+except Exception:
+    pass
+try:
+    EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+except Exception:
+    pass
+
 DEFAULT_HIGHLIGHT = "#fffbcc"
 CURRENT_BG = "#cfe9ff"
 OUTSTANDING_BG = "#ffd6d6"
@@ -26,10 +36,13 @@ class SchedulePanel:
         self.parent = parent
         self.coordinator = coordinator
         self.config = config
-        
-        self.font_large = ("Segoe UI", 20)
-        self.font_med = ("Segoe UI", 16)
-        self.font_small = ("Segoe UI", 12)
+        # Compute fonts from config base size for better scaling on large displays
+        base = int(self.config.get('font_size', 14))
+        self.base = base
+        # Slightly reduce multipliers so text fits better on the target screen
+        self.font_large = ("Segoe UI", max(14, int(base * 1.25)))
+        self.font_med = ("Segoe UI", max(11, int(base * 1.0)))
+        self.font_small = ("Segoe UI", max(9, int(base * 0.85)))
         
         self.water_goal = self.config.get("water_goal", 3)
 
@@ -51,6 +64,9 @@ class SchedulePanel:
 
         ensure_med("paracetamol", "Paracetamol")
         ensure_med("ibuprofen", "Ibuprofen")
+        # Add hard-coded morning/evening medication entries
+        ensure_med("morning", "Morning")
+        ensure_med("evening", "Evening")
 
         # Do NOT pre-load `other_meds` from config; other meds are added
         # ad-hoc by the user at runtime and stored in the daily log.
@@ -92,7 +108,16 @@ class SchedulePanel:
     
     def save_log(self):
         p = LOG_DIR / f"{self.today.isoformat()}.json"
-        p.write_text(json.dumps(self.log, indent=2, ensure_ascii=False), encoding="utf-8")
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(json.dumps(self.log, indent=2, ensure_ascii=False), encoding="utf-8")
+        except Exception as e:
+            # Fail quietly but log to stderr
+            try:
+                import logging
+                logging.error(f"Failed to save schedule log {p}: {e}")
+            except Exception:
+                pass
     
     def parse_schedule(self, sched):
         out = []
@@ -144,7 +169,11 @@ class SchedulePanel:
         self.date_label = tk.Label(top, text="", font=self.font_large)
         self.date_label.pack(side=tk.LEFT)
         
-        self.time_label = tk.Label(top, text="", font=("Segoe UI", 36, "bold"))
+        # Date and time fonts: make date slightly smaller and time less dominant
+        date_font = ("Segoe UI", max(16, int(self.base * 1.4)))
+        time_font = ("Segoe UI", max(20, int(self.base * 1.8)), "bold")
+        self.date_label = tk.Label(top, text="", font=date_font)
+        self.time_label = tk.Label(top, text="", font=time_font)
         self.time_label.pack(side=tk.RIGHT)
         
         # Schedule list with scrollbar
@@ -193,13 +222,15 @@ class SchedulePanel:
 
             # Combined check icon button (toggles checked state) - compact
             check_symbol = "✓" if chk_text.get() else "☐"
+
+            # Notes button placed to the right of the check button
+            btn_note = tk.Button(row, text="Notes", font=self.font_small, width=10,
+                                 command=lambda i=item: self.edit_note(i))
+            btn_note.pack(side=tk.RIGHT, padx=(4, 6))
+
             check_btn = tk.Button(row, text=check_symbol, font=("Segoe UI", 18), width=3,
                                   command=lambda i=item: self.toggle_check(i))
             check_btn.pack(side=tk.RIGHT, padx=(6, 4))
-
-            btn_note = tk.Button(row, text="Notes", font=self.font_small, width=10,
-                               command=lambda i=item: self.edit_note(i))
-            btn_note.pack(side=tk.RIGHT, padx=6)
 
             self.row_widgets[item.get("id")] = {"frame": row, "check_var": chk_text, "check_btn": check_btn}
     
@@ -307,17 +338,39 @@ class SchedulePanel:
     
     def _midnight_handler(self):
         try:
-            self.save_log()
-            p = LOG_DIR / f"{self.today.isoformat()}.json"
-            if p.exists():
-                try:
-                    shutil.copy2(p, EXPORT_DIR / p.name)
-                except Exception:
-                    pass
-            self.today = self.today + datetime.timedelta(days=1)
-            self.log = self.load_log(self.today)
-            for item in self.schedule:
-                chk = self.log.get(item["id"], {}).get("checked")
-                self.row_widgets[item["id"]]["check_var"].set("✓" if chk else "")
+            # Save current day's log; ensure directories exist
+            try:
+                self.save_log()
+            except Exception:
+                pass
+
+            try:
+                p = LOG_DIR / f"{self.today.isoformat()}.json"
+                if p.exists():
+                    EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+                    try:
+                        shutil.copy2(p, EXPORT_DIR / p.name)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+            # Reset to today's actual date (handles clock changes or missed midnights)
+            try:
+                self.today = datetime.date.today()
+            except Exception:
+                self.today = self.today + datetime.timedelta(days=1)
+
+            # Load (or create) new day's log and update UI
+            try:
+                self.log = self.load_log(self.today)
+                for item in self.schedule:
+                    chk = self.log.get(item["id"], {}).get("checked")
+                    try:
+                        self.row_widgets[item["id"]]["check_var"].set("✓" if chk else "")
+                    except Exception:
+                        pass
+            except Exception:
+                pass
         finally:
             self.schedule_midnight()

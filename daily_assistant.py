@@ -5,6 +5,7 @@ Combines schedule, Teams, and media controls in a single interface.
 
 import tkinter as tk
 from tkinter import ttk
+from screeninfo import get_monitors
 import json
 import logging
 import sys
@@ -70,9 +71,7 @@ class DailyAssistantApp:
                 {"time": "22:00", "title": "Bedtime"}
             ],
             'weekday_overrides': {},
-            'water_goal': 8,
-            'medication_schedule': ["Morning (08:00)", "Evening (20:00)"],
-            'other_meds': ["Vitamin D", "Magnesium"],
+            'water_goal': 2,
             
             # Teams settings
             'teams_buttons': [
@@ -88,7 +87,8 @@ class DailyAssistantApp:
             'auto_resume': True,
             
             # UI settings
-            'fullscreen': False,
+            'fullscreen': True,
+            'screen_index': 1,
             'font_size': 14
             ,
             # Coordinator behavior
@@ -121,34 +121,86 @@ class DailyAssistantApp:
     
     def setup_window(self):
         """Configure main window"""
-        if self.config.get('fullscreen', False):
-            self.root.attributes('-fullscreen', True)
-        else:
-            self.root.geometry('1400x800')
-        
-        self.root.configure(bg='white')
+        try:
+            monitors = get_monitors()
+            # default to second monitor (index 1) if available
+            idx = int(self.config.get('screen_index', 1))
+            if monitors and 0 <= idx < len(monitors):
+                screen = monitors[idx]
+            elif monitors:
+                screen = monitors[0]
+            else:
+                screen = None
+
+            # Move window to selected monitor coordinates before fullscreen
+            if screen:
+                self.root.geometry(f"1x1+{screen.x}+{screen.y}")
+                self._current_monitor = screen
+            else:
+                self._current_monitor = None
+
+            if self.config.get('fullscreen', True):
+                # ensure geometry update before toggling fullscreen
+                self.root.update_idletasks()
+                self.root.attributes('-fullscreen', True)
+                # Make the window borderless to reclaim screen space
+                try:
+                    self.root.overrideredirect(True)
+                except Exception:
+                    pass
+            else:
+                self.root.geometry('1400x800')
+
+            self.root.configure(bg='white')
+        except Exception as e:
+            logging.error(f"Error setting up window positioning: {e}")
+            # Fallback
+            if self.config.get('fullscreen', True):
+                self.root.attributes('-fullscreen', True)
+            else:
+                self.root.geometry('1400x800')
+            self.root.configure(bg='white')
     
     def create_layout(self):
         """Create main layout with schedule, side panel, and media"""
-        
         # Main container
         main_frame = tk.Frame(self.root, bg='white')
         main_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Column 1: Schedule (50% width)
-        schedule_frame = tk.Frame(main_frame, bg='white')
-        schedule_frame.pack(side='left', fill='both', expand=True, padx=5, pady=5)
+
+        # Compute column widths from monitor if available (schedule 60%, side 20%, media 20%)
+        monitor_w = None
+        try:
+            if hasattr(self, '_current_monitor') and self._current_monitor:
+                monitor_w = int(self._current_monitor.width)
+        except Exception:
+            monitor_w = None
+
+        if monitor_w:
+            # Use 50/25/25 split to reduce schedule dominance
+            sched_w = int(monitor_w * 0.50)
+            side_w = int(monitor_w * 0.25)
+            media_w = monitor_w - sched_w - side_w
+        else:
+            sched_w = None
+            side_w = 350
+            media_w = 350
+
+        # Column 1: Schedule
+        schedule_frame = tk.Frame(main_frame, bg='white', width=sched_w)
+        schedule_frame.pack(side='left', fill='both', expand=(sched_w is None), padx=6, pady=6)
+        if sched_w:
+            schedule_frame.pack_propagate(False)
         self.schedule_panel = SchedulePanel(schedule_frame, self.coordinator, self.config)
-        
-        # Column 2: Side panel - water, meds, notes, Teams (25% width)
-        side_frame = tk.Frame(main_frame, bg='lightgray', width=350)
-        side_frame.pack(side='left', fill='both', padx=5, pady=5)
+
+        # Column 2: Side panel - water, meds, notes, Teams
+        side_frame = tk.Frame(main_frame, bg='lightgray', width=side_w)
+        side_frame.pack(side='left', fill='both', padx=6, pady=6)
         side_frame.pack_propagate(False)
         self.side_panel = SidePanel(side_frame, self.schedule_panel, self.coordinator, self.config)
-        
-        # Column 3: Media controls (25% width)
-        media_frame = tk.Frame(main_frame, bg='white', width=350)
-        media_frame.pack(side='left', fill='both', padx=5, pady=5)
+
+        # Column 3: Media controls
+        media_frame = tk.Frame(main_frame, bg='white', width=media_w)
+        media_frame.pack(side='left', fill='both', padx=6, pady=6)
         media_frame.pack_propagate(False)
         try:
             self.media_panel = MediaPanel(media_frame, self.coordinator, self.config)
@@ -160,17 +212,7 @@ class DailyAssistantApp:
             error_label.pack(pady=20)
         
         # Add close button if fullscreen
-        if self.config.get('fullscreen', False):
-            close_btn = tk.Button(
-                self.root,
-                text='×',
-                font=('Arial', 16, 'bold'),
-                bg='red',
-                fg='white',
-                command=self.quit,
-                width=3
-            )
-            close_btn.place(x=self.root.winfo_screenwidth() - 60, y=10)
+        # Window decorations removed when fullscreen to reclaim space
     
     def quit(self):
         """Clean shutdown"""

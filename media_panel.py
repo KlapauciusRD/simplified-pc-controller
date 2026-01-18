@@ -417,14 +417,15 @@ class MediaPanel:
         """Build UI with larger buttons in 2-column grid for touchscreen."""
         frame = tk.Frame(self.parent)
         frame.pack(fill='both', expand=True, padx=5, pady=5)
-
-        # Button style configuration
-        btn_font = ("Segoe UI", 13, "bold")
-        btn_height = 2
+        # Button style configuration (scale from config)
+        base = int(self.config.get('font_size', 14))
+        btn_font = ("Segoe UI", max(12, int(base * 0.9)), "bold")
+        # Use a compact single-line button height to reduce vertical footprint
+        btn_height = 1
         
         # Control buttons in 2-column grid
         controls_frame = tk.Frame(frame)
-        controls_frame.pack(fill='x', pady=(0, 10))
+        controls_frame.pack(fill='x', pady=(0, 6))
         
         # Configure grid columns to expand equally
         controls_frame.columnconfigure(0, weight=1)
@@ -432,51 +433,51 @@ class MediaPanel:
         
         # Row 0
         self.play_button = tk.Button(controls_frame, text="▶ Play", font=btn_font, height=btn_height,
-                                     relief=tk.RAISED, bd=3, command=self.play)
-        self.play_button.grid(row=0, column=0, padx=3, pady=3, sticky="ew")
+                         relief=tk.RAISED, bd=2, command=self.play)
+        self.play_button.grid(row=0, column=0, padx=3, pady=2, sticky="ew")
         
         self.pause_button = tk.Button(controls_frame, text="⏸ Pause", font=btn_font, height=btn_height,
-                                      relief=tk.RAISED, bd=3, command=self.pause)
-        self.pause_button.grid(row=0, column=1, padx=3, pady=3, sticky="ew")
+                          relief=tk.RAISED, bd=2, command=self.pause)
+        self.pause_button.grid(row=0, column=1, padx=3, pady=2, sticky="ew")
         
         # Row 1
         self.rewind_button = tk.Button(controls_frame, text="⏪ -30s", font=btn_font, height=btn_height,
-                                       relief=tk.RAISED, bd=3, command=self.rewind_30s)
-        self.rewind_button.grid(row=1, column=0, padx=3, pady=3, sticky="ew")
+                           relief=tk.RAISED, bd=2, command=self.rewind_30s)
+        self.rewind_button.grid(row=1, column=0, padx=3, pady=2, sticky="ew")
         
         self.ff_button = tk.Button(controls_frame, text="⏩ +30s", font=btn_font, height=btn_height,
-                                   relief=tk.RAISED, bd=3, command=self.fast_forward_30s)
-        self.ff_button.grid(row=1, column=1, padx=3, pady=3, sticky="ew")
+                       relief=tk.RAISED, bd=2, command=self.fast_forward_30s)
+        self.ff_button.grid(row=1, column=1, padx=3, pady=2, sticky="ew")
         
         # Row 2
         self.prev_button = tk.Button(controls_frame, text="⏮ Previous", font=btn_font, height=btn_height,
-                                     relief=tk.RAISED, bd=3, command=self.previous_in_playlist)
-        self.prev_button.grid(row=2, column=0, padx=3, pady=3, sticky="ew")
+                         relief=tk.RAISED, bd=2, command=self.previous_in_playlist)
+        self.prev_button.grid(row=2, column=0, padx=3, pady=2, sticky="ew")
         
         self.next_button = tk.Button(controls_frame, text="⏭ Next", font=btn_font, height=btn_height,
-                                     relief=tk.RAISED, bd=3, command=self.next_in_playlist)
-        self.next_button.grid(row=2, column=1, padx=3, pady=3, sticky="ew")
+                         relief=tk.RAISED, bd=2, command=self.next_in_playlist)
+        self.next_button.grid(row=2, column=1, padx=3, pady=2, sticky="ew")
         
         # Row 3
         self.random_button = tk.Button(controls_frame, text="🔀 Random", font=btn_font, height=btn_height,
-                                       relief=tk.RAISED, bd=3, command=self.random_in_playlist)
-        self.random_button.grid(row=3, column=0, padx=3, pady=3, sticky="ew")
+                           relief=tk.RAISED, bd=2, command=self.random_in_playlist)
+        self.random_button.grid(row=3, column=0, padx=3, pady=2, sticky="ew")
         
         self.minimise_button = tk.Button(controls_frame, text="🗕 Minimize", font=btn_font, height=btn_height,
-                                         relief=tk.RAISED, bd=3, command=self.hide_window)
-        self.minimise_button.grid(row=3, column=1, padx=3, pady=3, sticky="ew")
+                         relief=tk.RAISED, bd=2, command=self.hide_window)
+        self.minimise_button.grid(row=3, column=1, padx=3, pady=2, sticky="ew")
         
         # Reshuffle button (full width)
         self.reshuffle_button = tk.Button(frame, text="🔄 Reshuffle Shows", font=btn_font, height=btn_height,
-                                          relief=tk.RAISED, bd=3, command=self.reshuffle_quick_access)
-        self.reshuffle_button.pack(fill='x', pady=(5, 10))
+                          relief=tk.RAISED, bd=2, command=self.reshuffle_quick_access)
+        self.reshuffle_button.pack(fill='x', pady=(4, 8))
         
         # Quick access section
-        quick_label = tk.Label(frame, text="Quick Access:", font=("Segoe UI", 12, "bold"))
+        quick_label = tk.Label(frame, text="Quick Access:", font=("Segoe UI", max(11, int(base * 0.8)), "bold"))
         quick_label.pack(pady=(5, 3))
         
         self.quick_access_frame = tk.Frame(frame)
-        self.quick_access_frame.pack(fill='both', expand=True, pady=5)
+        self.quick_access_frame.pack(fill='both', expand=True, pady=3)
         self.individual_buttons = []        
 
         try:

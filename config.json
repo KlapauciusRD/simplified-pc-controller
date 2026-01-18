@@ -75,14 +75,7 @@
         }
     },
     "water_goal": 2,
-    "medication_schedule": [
-        "Morning (08:00)",
-        "Evening (20:00)"
-    ],
-    "other_meds": [
-        "Vitamin D",
-        "Magnesium"
-    ],
+    
     "quick_calls": [
         {
             "name": "Liz",
@@ -106,5 +99,5 @@
     "auto_resume": true,
     "fullscreen": false,
     "font_size": 14,
-    "pause_on_outstanding": true
+    "pause_on_outstanding": false
 }
