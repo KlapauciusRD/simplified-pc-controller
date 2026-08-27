@@ -2,12 +2,14 @@
 VLC Media Panel - Video playback control integrated with app coordinator.
 """
 
+import json
 import random
 import pathlib
 import threading
 import time
 import logging
 import tkinter as tk
+from urllib.parse import unquote, urlparse
 from tkinter import ttk
 import ctypes
 from ctypes import wintypes
@@ -52,6 +54,13 @@ class MediaPanel:
         # Paths
         self.series_dir = pathlib.Path(self.config.get('series_dir', 'D:/video/series'))
         self.movies_dir = pathlib.Path(self.config.get('movies_dir', 'D:/video/movies'))
+
+        # Series progress tracking
+        self._progress_file = pathlib.Path('series_progress.json')
+        self._series_progress = {}   # {series_name: next_episode_filename}
+        self._series_sorted_files = []  # sorted episode list for current series
+        self._last_saved_mrl = None  # MRL we last saved progress for
+        self._load_series_progress()
 
         # Media lists
         self.series_available = []
@@ -234,8 +243,33 @@ class MediaPanel:
         thread = threading.Thread(target=self.monitor_status, daemon=True)
         thread.start()
     
+    def _load_series_progress(self):
+        """Load series progress from JSON file."""
+        try:
+            if self._progress_file.exists():
+                with open(self._progress_file, 'r', encoding='utf-8') as f:
+                    self._series_progress = json.load(f)
+        except Exception as e:
+            logging.error(f"Error loading series progress: {e}")
+            self._series_progress = {}
+
+    def _save_series_progress(self):
+        """Save series progress to JSON file."""
+        try:
+            with open(self._progress_file, 'w', encoding='utf-8') as f:
+                json.dump(self._series_progress, f, indent=2)
+        except Exception as e:
+            logging.error(f"Error saving series progress: {e}")
+
+    def _is_series_folder(self, folder):
+        """Return True if folder is under the series directory."""
+        try:
+            return pathlib.Path(folder).resolve().is_relative_to(self.series_dir.resolve())
+        except Exception:
+            return False
+
     def monitor_status(self):
-        """Monitor playback status and update UI"""
+        """Monitor playback status and update UI; save series progress on episode completion."""
         while True:
             try:
                 if self.player and hasattr(self, 'status_label'):
@@ -246,13 +280,71 @@ class MediaPanel:
                         if length > 0:
                             progress = (current_time / length) * 100
                             self.progress_var.set(progress)
-                        
+
+                            # Detect episode completion (>95%) and save series progress
+                            if (progress >= 95
+                                    and self._series_sorted_files
+                                    and self.current_folder
+                                    and self._is_series_folder(self.current_folder)):
+                                try:
+                                    mrl = player.get_media().get_mrl() if player.get_media() else None
+                                    if mrl and mrl != self._last_saved_mrl:
+                                        self._last_saved_mrl = mrl
+                                        self._advance_series_progress(mrl)
+                                except Exception as e:
+                                    logging.error(f"Error saving series progress: {e}")
+
                         player.release()
             except Exception as e:
                 logging.error(f"Status monitoring error: {e}")
-            
+
             time.sleep(1)
-    
+
+    def _advance_series_progress(self, completed_mrl):
+        """
+        Called when an episode is nearly finished. Saves the *next* episode as the
+        progress marker for the current series. If the completed episode is the last
+        one, clears the saved progress so the series starts over on next selection.
+        """
+        try:
+            series_name = self.current_folder.name
+            # Decode percent-encoded MRL to a plain path
+            try:
+                parsed = urlparse(completed_mrl)
+                completed_path = pathlib.Path(unquote(parsed.path)).resolve()
+            except Exception:
+                completed_path = None
+
+            if completed_path is None:
+                return
+
+            # Find index in sorted episode list
+            sorted_paths = [pathlib.Path(str(f)).resolve() for f in self._series_sorted_files]
+            try:
+                idx = sorted_paths.index(completed_path)
+            except ValueError:
+                # Try matching by filename only
+                completed_name = completed_path.name
+                names = [p.name for p in sorted_paths]
+                if completed_name in names:
+                    idx = names.index(completed_name)
+                else:
+                    return
+
+            next_idx = idx + 1
+            if next_idx >= len(self._series_sorted_files):
+                # Last episode: clear progress so series restarts
+                self._series_progress.pop(series_name, None)
+                logging.info(f"Series '{series_name}' completed; progress cleared.")
+            else:
+                next_name = self._series_sorted_files[next_idx].name
+                self._series_progress[series_name] = next_name
+                logging.info(f"Series '{series_name}' progress saved: {next_name}")
+
+            self._save_series_progress()
+        except Exception as e:
+            logging.error(f"Error in _advance_series_progress: {e}")
+
     def play(self):
         if not VLC_AVAILABLE:
             return
@@ -471,7 +563,12 @@ class MediaPanel:
         # Reshuffle button (full width)
         self.reshuffle_button = tk.Button(frame, text="🔄 Reshuffle Shows", font=btn_font, height=btn_height,
                           relief=tk.RAISED, bd=1, command=self.reshuffle_quick_access)
-        self.reshuffle_button.pack(fill='x', pady=(2, 6))
+        self.reshuffle_button.pack(fill='x', pady=(2, 2))
+
+        # Resume series button (full width)
+        self.resume_button = tk.Button(frame, text="📺 Resume Series", font=btn_font, height=btn_height,
+                          relief=tk.RAISED, bd=1, command=self.resume_series)
+        self.resume_button.pack(fill='x', pady=(2, 6))
         
         # Quick access section
         quick_label = tk.Label(frame, text="Quick Access:", font=("Segoe UI", max(11, int(self.base * 0.8)), "bold"))
@@ -510,11 +607,31 @@ class MediaPanel:
             self.individual_buttons.append(button)
     
     def change_playlist(self, folder):
-        self.current_folder = folder
+        self.current_folder = pathlib.Path(folder)
         video_fn_list = self.find_video_files(self.current_folder)
-        self.set_playlist(video_fn_list)
-        # Play a random item from the newly set playlist (respecting coordinator)
-        self.random_in_playlist()
+
+        if self._is_series_folder(self.current_folder) and video_fn_list:
+            # Sort episodes for deterministic order
+            video_fn_list = sorted(video_fn_list, key=lambda p: str(p).lower())
+            self._series_sorted_files = video_fn_list
+            self._last_saved_mrl = None  # reset so completion can be re-detected
+
+            self.set_playlist(video_fn_list)
+
+            # Start from saved episode if one exists; otherwise episode 1
+            series_name = self.current_folder.name
+            saved_name = self._series_progress.get(series_name)
+            start_index = 0
+            if saved_name:
+                names = [p.name for p in video_fn_list]
+                if saved_name in names:
+                    start_index = names.index(saved_name)
+
+            self._play_series_at_index(start_index)
+        else:
+            self._series_sorted_files = []
+            self.set_playlist(video_fn_list)
+            self.random_in_playlist()
     
     def set_playlist(self, fn_list):
         media_list = self.vlc_instance.media_list_new()
@@ -522,6 +639,92 @@ class MediaPanel:
             media_list.add_media(video_media)
         self.current_media_list = media_list
         self.player.set_media_list(self.current_media_list)
+
+    def _play_series_at_index(self, index):
+        """Start playback at a specific index in the current series playlist, obeying coordinator."""
+        if not VLC_AVAILABLE:
+            return
+        try:
+            if not self.coordinator.can_play_media():
+                try:
+                    with self.coordinator.lock:
+                        outstanding = bool(self.coordinator.outstanding_items)
+                        active_call = bool(self.coordinator.active_call)
+                except Exception:
+                    outstanding = False
+                    active_call = False
+                parts = []
+                if outstanding:
+                    parts.append("outstanding schedule items")
+                if active_call:
+                    parts.append("an active call")
+                message = f"Cannot play — {' and '.join(parts) or 'an unknown reason'}."
+                try:
+                    self._show_transient_popup(message, duration=3000)
+                except Exception:
+                    from tkinter import messagebox
+                    messagebox.showwarning("Playback Blocked", message, parent=self.parent)
+                return
+
+            self.player.stop()
+            self.player.play_item_at_index(index)
+            self.is_playing = True
+            try:
+                player = self.player.get_media_player()
+                if player:
+                    player.set_fullscreen(True)
+                    player.release()
+            except Exception:
+                pass
+            try:
+                self._ensure_fullscreen_attempts(5, 300)
+                self.parent.after(300, lambda: self._ensure_fullscreen_attempts(5, 300))
+            except Exception:
+                pass
+
+            if self._series_sorted_files and index < len(self._series_sorted_files):
+                ep_name = self._series_sorted_files[index].name
+                try:
+                    self._show_transient_popup(f"▶ {ep_name}", duration=3000)
+                except Exception:
+                    pass
+        except Exception as e:
+            logging.error(f"Error starting series at index {index}: {e}")
+
+    def resume_series(self):
+        """Resume the current series from the saved episode, or show a message if none is saved."""
+        if not VLC_AVAILABLE:
+            return
+        if not self.current_folder or not self._is_series_folder(self.current_folder):
+            try:
+                self._show_transient_popup("No series is currently selected.", duration=3000)
+            except Exception:
+                pass
+            return
+
+        series_name = self.current_folder.name
+        saved_name = self._series_progress.get(series_name)
+
+        # Reload file list in case folder contents changed
+        video_fn_list = sorted(self.find_video_files(self.current_folder), key=lambda p: str(p).lower())
+        if not video_fn_list:
+            try:
+                self._show_transient_popup("No episodes found in current series.", duration=3000)
+            except Exception:
+                pass
+            return
+
+        self._series_sorted_files = video_fn_list
+        self.set_playlist(video_fn_list)
+        self._last_saved_mrl = None
+
+        start_index = 0
+        if saved_name:
+            names = [p.name for p in video_fn_list]
+            if saved_name in names:
+                start_index = names.index(saved_name)
+
+        self._play_series_at_index(start_index)
     
     def find_video_files(self, folder):
         video_extensions = ['.mp4', '.avi', '.mkv', '.flv', '.mov', '.wmv', '.mpg', '.mpeg']
