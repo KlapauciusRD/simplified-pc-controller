@@ -858,7 +858,10 @@ class ScheduleApp:
                     pass
         if hasattr(self, "other_med_hist"):
             self.other_med_hist.delete(0, tk.END)
-            for rec in self.log.get("_other_meds") or []:
+            other_meds = self.log.get("_other_meds", [])
+            if other_meds is None:
+                other_meds = []
+            for rec in other_meds:
                 try:
                     if isinstance(rec, dict):
                         ts = rec.get("ts", "")
