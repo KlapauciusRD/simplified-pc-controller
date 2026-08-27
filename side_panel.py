@@ -39,12 +39,19 @@ class SidePanel:
         btn_drink = tk.Button(water_frame, text="Drink", font=self.side_small_font, width=10,
                             command=self.increment_water)
         btn_drink.pack(side=tk.LEFT)
+        btn_reset = tk.Button(water_frame, text="Reset", font=self.side_small_font, width=10,
+                            command=self.reset_water)
+        btn_reset.pack(side=tk.LEFT, padx=(6, 0))
         
         # Medications
         lblm = tk.Label(self.parent, text="Medications", font=self.side_label_font)
         lblm.pack(pady=(10, 4))
         
         self.med_vars = {}
+        self.med_buttons = {}
+        self.med_history_vars = {}
+        self._med_rows = {}
+        self._dynamic_med_ids = set()
         # Container for medication rows so we can add ad-hoc meds at runtime
         meds_frame = tk.Frame(self.parent)
         meds_frame.pack(fill=tk.X)
@@ -54,7 +61,7 @@ class SidePanel:
         for med in self.schedule_panel.medications:
             mid = med.get("id")
             name = med.get("name")
-            self._create_med_row(mid, name)
+            self._create_med_row(mid, name, is_dynamic=False)
 
         # Render ad-hoc other medications stored in today's log
         for om in self.schedule_panel.log.get("_other_meds", []):
@@ -66,7 +73,7 @@ class SidePanel:
                 mid = om.strip().lower().replace(" ", "_")
             else:
                 continue
-            self._create_med_row(mid, name)
+            self._create_med_row(mid, name, is_dynamic=True)
 
         # Add button to create a new ad-hoc medication and quick 'Other' recorder
         add_frame = tk.Frame(self.parent)
@@ -131,6 +138,14 @@ class SidePanel:
         entry.setdefault("entries", []).append(datetime.datetime.now().isoformat())
         self.schedule_panel.save_log()
         self.update_water_var()
+
+    def reset_water(self):
+        entry = self.schedule_panel.log.setdefault("_water",
+                                                   {"count": 0, "goal": self.schedule_panel.water_goal})
+        entry["count"] = 0
+        entry["entries"] = []
+        self.schedule_panel.save_log()
+        self.update_water_var()
     
     def record_med_taken(self, med_id):
         meds = self.schedule_panel.log.setdefault("_meds", {})
@@ -188,7 +203,7 @@ class SidePanel:
         self.schedule_panel.save_log()
 
         # Create the UI row for the new med
-        self._create_med_row(mid, name.strip())
+        self._create_med_row(mid, name.strip(), is_dynamic=True)
 
     def record_other_quick(self):
         """Prompt for a medication name and record an ad-hoc administration immediately."""
@@ -211,13 +226,16 @@ class SidePanel:
             except Exception:
                 pass
 
-    def _create_med_row(self, med_id, name):
+    def _create_med_row(self, med_id, name, is_dynamic=False):
         """Create a medication row in the meds container and register its var."""
         # Avoid duplicating rows
         if med_id in self.med_vars:
             return
         container = tk.Frame(self._meds_container)
         container.pack(fill=tk.X, pady=2, padx=6)
+        self._med_rows[med_id] = container
+        if is_dynamic:
+            self._dynamic_med_ids.add(med_id)
 
         top = tk.Frame(container)
         top.pack(fill=tk.X)
@@ -227,6 +245,7 @@ class SidePanel:
             mbtn = tk.Button(top, text=name, font=self.side_med_font, relief=tk.FLAT,
                              command=lambda mid=med_id: self.record_med_taken(mid))
             mbtn.pack(side=tk.LEFT, padx=(0,6))
+            self.med_buttons[med_id] = mbtn
         except Exception:
             # Fallback to a label if button creation fails
             mlabel = tk.Label(top, text=name, font=self.side_med_font)
@@ -264,10 +283,80 @@ class SidePanel:
             hist_var.set('')
 
         self.med_vars[med_id] = var
-        # Store history var for updates
-        if not hasattr(self, 'med_history_vars'):
-            self.med_history_vars = {}
         self.med_history_vars[med_id] = hist_var
+
+    def _remove_med_row(self, med_id):
+        row = self._med_rows.pop(med_id, None)
+        if row is not None:
+            try:
+                row.destroy()
+            except Exception:
+                pass
+        self.med_vars.pop(med_id, None)
+        self.med_buttons.pop(med_id, None)
+        self.med_history_vars.pop(med_id, None)
+        self._dynamic_med_ids.discard(med_id)
+
+    def _refresh_med_row(self, med_id):
+        taken_list = self.schedule_panel.log.get("_meds", {}).get(med_id, {}).get("taken") or []
+        last_taken = ""
+        if isinstance(taken_list, list) and taken_list:
+            try:
+                last_taken = datetime.datetime.fromisoformat(taken_list[-1]).strftime("%H:%M")
+            except Exception:
+                last_taken = ""
+
+        var = self.med_vars.get(med_id)
+        if var is not None:
+            var.set(last_taken)
+
+        hist_var = self.med_history_vars.get(med_id)
+        if hist_var is not None:
+            recent = []
+            for tiso in taken_list[-5:]:
+                try:
+                    recent.append(datetime.datetime.fromisoformat(tiso).strftime("%H:%M"))
+                except Exception:
+                    pass
+            hist_var.set(', '.join(recent))
+
+    def refresh_for_new_day(self):
+        self.update_water_var()
+
+        for med in self.schedule_panel.medications:
+            mid = med.get("id")
+            if mid not in self.med_vars:
+                self._create_med_row(mid, med.get("name"), is_dynamic=False)
+            self._refresh_med_row(mid)
+
+        for med_id in list(self._dynamic_med_ids):
+            self._remove_med_row(med_id)
+
+        for om in self.schedule_panel.log.get("_other_meds", []):
+            if isinstance(om, dict):
+                mid = om.get("id")
+                name = om.get("name")
+            elif isinstance(om, str):
+                name = om
+                mid = om.strip().lower().replace(" ", "_")
+            else:
+                continue
+            if mid and name:
+                self._create_med_row(mid, name, is_dynamic=True)
+                self._refresh_med_row(mid)
+
+        try:
+            self._other_log_text.delete("1.0", tk.END)
+            for entry in self.schedule_panel.log.get("_other_meds_entries", []):
+                try:
+                    ts = entry.get("ts")
+                    name = entry.get("name")
+                    t = datetime.datetime.fromisoformat(ts)
+                    self._other_log_text.insert(tk.END, f"{t.strftime('%H:%M')} - {name}\n")
+                except Exception:
+                    pass
+        except Exception:
+            pass
     
     def save_today_notes(self):
         try:

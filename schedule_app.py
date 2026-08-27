@@ -54,12 +54,14 @@ class ScheduleApp:
         self.water_goal = self.config.get("water_goal", 3)
         self.block_feature_enabled = self.config.get("block_on_outstanding", True)
         self.medications = self.config.get("medications", [])
-        self.schedule = self.parse_schedule(self.config.get("schedule", []))
+        self.base_schedule = self.config.get("schedule", [])
+        self.schedule = []
         # apply any per-weekday overrides (extra events)
-        self.apply_overrides()
+        self.refresh_schedule_for_date(datetime.date.today())
 
         self.today = datetime.date.today()
         self.log = self.load_log(self.today)
+        self.export_pending_logs(self.today)
 
         self.build_ui()
         self.running = True
@@ -336,13 +338,14 @@ class ScheduleApp:
             self.log[item["id"]]["note"] = note
             self.save_log()
 
-    def apply_overrides(self):
+    def apply_overrides(self, day=None):
         """Merge any overrides for today's weekday into `self.schedule`.
         Expects overrides format: config['overrides']["Monday"].get('extra', [ ... ])
         """
         try:
             overrides = self.config.get("overrides", {})
-            wd = datetime.date.today().strftime("%A")
+            target_day = day or getattr(self, "today", datetime.date.today())
+            wd = target_day.strftime("%A")
             day_cfg = overrides.get(wd, {})
             extras = day_cfg.get("extra") if isinstance(day_cfg, dict) else None
             if extras:
@@ -361,6 +364,10 @@ class ScheduleApp:
                 self.schedule.sort(key=lambda x: x["time"])
         except Exception:
             pass
+
+    def refresh_schedule_for_date(self, day):
+        self.schedule = self.parse_schedule(self.base_schedule)
+        self.apply_overrides(day)
 
     def build_schedule_rows(self):
         # clear existing rows
@@ -739,55 +746,7 @@ class ScheduleApp:
         self.date_label.config(text=now.strftime("%A %d %b %Y"))
         # reload if day changed
         if now.date() != self.today:
-            self.today = now.date()
-            self.log = self.load_log(self.today)
-            # update check marks
-            for item in self.schedule:
-                chk = self.log.get(item["id"], {}).get("checked")
-                self.row_widgets[item["id"]]["check_var"].set("✓" if chk else "")
-            # update water and meds UI
-            if hasattr(self, "water_var"):
-                self.update_water_var()
-            if hasattr(self, "med_vars"):
-                for mid, var in self.med_vars.items():
-                        # show last taken time or blank, and update history listbox
-                        taken_list = self.log.get("_meds", {}).get(mid, {}).get("taken") or []
-                        last = ""
-                        if isinstance(taken_list, list) and taken_list:
-                            try:
-                                last = datetime.datetime.fromisoformat(taken_list[-1]).strftime("%H:%M")
-                            except Exception:
-                                last = ""
-                        var.set(last)
-                        hist = self.med_hist_widgets.get(mid)
-                        if hist is not None:
-                            hist.delete(0, tk.END)
-                            for t in taken_list:
-                                try:
-                                    txt = datetime.datetime.fromisoformat(t).strftime("%Y-%m-%d %H:%M:%S")
-                                except Exception:
-                                    txt = str(t)
-                                hist.insert(tk.END, txt)
-            # update today's notes UI
-            if hasattr(self, "notes_text"):
-                try:
-                    self.notes_text.delete("1.0", tk.END)
-                    self.notes_text.insert("1.0", self.log.get("_today_notes", ""))
-                except Exception:
-                    pass
-            # update water and meds UI
-            if hasattr(self, "water_var"):
-                self.update_water_var()
-            if hasattr(self, "med_vars"):
-                for mid, var in self.med_vars.items():
-                    taken_list = self.log.get("_meds", {}).get(mid, {}).get("taken") or []
-                    last = ""
-                    if isinstance(taken_list, list) and taken_list:
-                        try:
-                            last = datetime.datetime.fromisoformat(taken_list[-1]).strftime("%H:%M")
-                        except Exception:
-                            last = ""
-                    var.set(last)
+            self.reconcile_day_change(now.date())
         self.root.after(1000, self.update_clock)
 
     def update_highlight(self):
@@ -832,6 +791,102 @@ class ScheduleApp:
         # schedule the midnight handler
         self.root.after(ms, self._midnight_handler)
 
+    def export_log_for_date(self, day):
+        p = self.log_path(day)
+        if not p.exists():
+            return
+        EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+        dest = EXPORT_DIR / p.name
+        if (not dest.exists()) or p.stat().st_mtime > dest.stat().st_mtime:
+            shutil.copy2(p, dest)
+
+    def export_pending_logs(self, before_date):
+        for p in LOG_DIR.glob("*.json"):
+            try:
+                log_day = datetime.date.fromisoformat(p.stem)
+            except Exception:
+                continue
+            if log_day < before_date:
+                try:
+                    self.export_log_for_date(log_day)
+                except Exception:
+                    pass
+
+    def reconcile_day_change(self, new_date):
+        if new_date == self.today:
+            return
+        if new_date > self.today:
+            try:
+                self.save_log()
+            except Exception:
+                pass
+            try:
+                self.export_pending_logs(new_date)
+            except Exception:
+                pass
+        self.rollover_to_date(new_date)
+
+    def rollover_to_date(self, new_date):
+        self.today = new_date
+        self.refresh_schedule_for_date(new_date)
+        self.log = self.load_log(self.today)
+        self.build_schedule_rows()
+        if hasattr(self, "water_var"):
+            self.update_water_var()
+        if hasattr(self, "med_vars"):
+            for mid, var in self.med_vars.items():
+                taken_list = self.log.get("_meds", {}).get(mid, {}).get("taken") or []
+                last = ""
+                if isinstance(taken_list, list) and taken_list:
+                    try:
+                        last = datetime.datetime.fromisoformat(taken_list[-1]).strftime("%H:%M")
+                    except Exception:
+                        last = ""
+                var.set(last)
+                hist = self.med_hist_widgets.get(mid)
+                if hist is not None:
+                    hist.delete(0, tk.END)
+                    for t in taken_list:
+                        try:
+                            txt = datetime.datetime.fromisoformat(t).strftime("%Y-%m-%d %H:%M:%S")
+                        except Exception:
+                            txt = str(t)
+                        hist.insert(tk.END, txt)
+                try:
+                    self._refresh_med_color(mid)
+                except Exception:
+                    pass
+        if hasattr(self, "other_med_hist"):
+            self.other_med_hist.delete(0, tk.END)
+            other_meds = self.log.get("_other_meds", [])
+            if other_meds is None:
+                other_meds = []
+            for rec in other_meds:
+                try:
+                    if isinstance(rec, dict):
+                        ts = rec.get("ts", "")
+                        name = rec.get("name", "")
+                        try:
+                            ts = datetime.datetime.fromisoformat(ts).strftime("%H:%M")
+                        except Exception:
+                            pass
+                        txt = f"{ts} - {name}"
+                    else:
+                        txt = str(rec)
+                except Exception:
+                    txt = str(rec)
+                self.other_med_hist.insert(tk.END, txt)
+        if hasattr(self, "notes_text"):
+            try:
+                self.notes_text.delete("1.0", tk.END)
+                self.notes_text.insert("1.0", self.log.get("_today_notes", ""))
+            except Exception:
+                pass
+        try:
+            self.update_outstanding_flag()
+        except Exception:
+            pass
+
     def update_outstanding_flag(self):
         """Create or remove the schedule block flag file depending on whether outstanding items exist and feature enabled."""
         try:
@@ -863,22 +918,11 @@ class ScheduleApp:
 
     def _midnight_handler(self):
         try:
-            # ensure current day's log is saved
-            self.save_log()
-            # copy the saved log to exports for archival
-            p = self.log_path(self.today)
-            if p.exists():
-                try:
-                    shutil.copy2(p, EXPORT_DIR / p.name)
-                except Exception:
-                    pass
-            # advance to next day and load fresh log
-            self.today = self.today + datetime.timedelta(days=1)
-            self.log = self.load_log(self.today)
-            # refresh UI check marks (cleared for new day)
-            for item in self.schedule:
-                chk = self.log.get(item["id"], {}).get("checked")
-                self.row_widgets[item["id"]]["check_var"].set("✓" if chk else "")
+            try:
+                new_day = datetime.date.today()
+            except Exception:
+                new_day = self.today + datetime.timedelta(days=1)
+            self.reconcile_day_change(new_day)
         finally:
             # reschedule next midnight
             self.schedule_midnight()
