@@ -860,13 +860,16 @@ class ScheduleApp:
             self.other_med_hist.delete(0, tk.END)
             for rec in self.log.get("_other_meds") or []:
                 try:
-                    ts = rec.get("ts", "")
-                    name = rec.get("name", "")
-                    try:
-                        ts = datetime.datetime.fromisoformat(ts).strftime("%H:%M")
-                    except Exception:
-                        pass
-                    txt = f"{ts} - {name}"
+                    if isinstance(rec, dict):
+                        ts = rec.get("ts", "")
+                        name = rec.get("name", "")
+                        try:
+                            ts = datetime.datetime.fromisoformat(ts).strftime("%H:%M")
+                        except Exception:
+                            pass
+                        txt = f"{ts} - {name}"
+                    else:
+                        txt = str(rec)
                 except Exception:
                     txt = str(rec)
                 self.other_med_hist.insert(tk.END, txt)
