@@ -78,6 +78,7 @@ class SchedulePanel:
         
         self.today = datetime.date.today()
         self.log = self.load_log(self.today)
+        self.export_pending_logs(self.today)
         self.running = True
         
         self.build_ui()
@@ -297,7 +298,7 @@ class SchedulePanel:
         self.date_label.config(text=now.strftime("%A %d %b %Y"))
         
         if now.date() != self.today:
-            self.rollover_to_date(now.date())
+            self.reconcile_day_change(now.date())
         
         self.parent.after(1000, self.update_clock)
     
@@ -358,6 +359,41 @@ class SchedulePanel:
         ms = int((next_midnight - now).total_seconds() * 1000)
         self.parent.after(ms, self._midnight_handler)
 
+    def export_log_for_date(self, day):
+        p = LOG_DIR / f"{day.isoformat()}.json"
+        if not p.exists():
+            return
+        EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+        dest = EXPORT_DIR / p.name
+        if (not dest.exists()) or p.stat().st_mtime > dest.stat().st_mtime:
+            shutil.copy2(p, dest)
+
+    def export_pending_logs(self, before_date):
+        for p in LOG_DIR.glob("*.json"):
+            try:
+                log_day = datetime.date.fromisoformat(p.stem)
+            except Exception:
+                continue
+            if log_day < before_date:
+                try:
+                    self.export_log_for_date(log_day)
+                except Exception:
+                    pass
+
+    def reconcile_day_change(self, new_date):
+        if new_date == self.today:
+            return
+        if new_date > self.today:
+            try:
+                self.save_log()
+            except Exception:
+                pass
+            try:
+                self.export_pending_logs(new_date)
+            except Exception:
+                pass
+        self.rollover_to_date(new_date)
+
     def rollover_to_date(self, new_date):
         self.today = new_date
         self.refresh_schedule_for_date(new_date)
@@ -376,30 +412,10 @@ class SchedulePanel:
     
     def _midnight_handler(self):
         try:
-            previous_day = self.today
-            # Save current day's log; ensure directories exist
-            try:
-                self.save_log()
-            except Exception:
-                pass
-
-            try:
-                p = LOG_DIR / f"{previous_day.isoformat()}.json"
-                if p.exists():
-                    EXPORT_DIR.mkdir(parents=True, exist_ok=True)
-                    try:
-                        shutil.copy2(p, EXPORT_DIR / p.name)
-                    except Exception:
-                        pass
-            except Exception:
-                pass
-
-            # Reset to today's actual date (handles clock changes or missed midnights)
             try:
                 new_day = datetime.date.today()
             except Exception:
-                new_day = previous_day + datetime.timedelta(days=1)
-
-            self.rollover_to_date(new_day)
+                new_day = self.today + datetime.timedelta(days=1)
+            self.reconcile_day_change(new_day)
         finally:
             self.schedule_midnight()

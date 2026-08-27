@@ -61,6 +61,7 @@ class ScheduleApp:
 
         self.today = datetime.date.today()
         self.log = self.load_log(self.today)
+        self.export_pending_logs(self.today)
 
         self.build_ui()
         self.running = True
@@ -745,7 +746,7 @@ class ScheduleApp:
         self.date_label.config(text=now.strftime("%A %d %b %Y"))
         # reload if day changed
         if now.date() != self.today:
-            self.rollover_to_date(now.date())
+            self.reconcile_day_change(now.date())
         self.root.after(1000, self.update_clock)
 
     def update_highlight(self):
@@ -789,6 +790,41 @@ class ScheduleApp:
         ms = int((next_midnight - now).total_seconds() * 1000)
         # schedule the midnight handler
         self.root.after(ms, self._midnight_handler)
+
+    def export_log_for_date(self, day):
+        p = self.log_path(day)
+        if not p.exists():
+            return
+        EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+        dest = EXPORT_DIR / p.name
+        if (not dest.exists()) or p.stat().st_mtime > dest.stat().st_mtime:
+            shutil.copy2(p, dest)
+
+    def export_pending_logs(self, before_date):
+        for p in LOG_DIR.glob("*.json"):
+            try:
+                log_day = datetime.date.fromisoformat(p.stem)
+            except Exception:
+                continue
+            if log_day < before_date:
+                try:
+                    self.export_log_for_date(log_day)
+                except Exception:
+                    pass
+
+    def reconcile_day_change(self, new_date):
+        if new_date == self.today:
+            return
+        if new_date > self.today:
+            try:
+                self.save_log()
+            except Exception:
+                pass
+            try:
+                self.export_pending_logs(new_date)
+            except Exception:
+                pass
+        self.rollover_to_date(new_date)
 
     def rollover_to_date(self, new_date):
         self.today = new_date
@@ -870,18 +906,11 @@ class ScheduleApp:
 
     def _midnight_handler(self):
         try:
-            previous_day = self.today
-            # ensure current day's log is saved
-            self.save_log()
-            # copy the saved log to exports for archival
-            p = self.log_path(previous_day)
-            if p.exists():
-                try:
-                    shutil.copy2(p, EXPORT_DIR / p.name)
-                except Exception:
-                    pass
-            # advance to actual current day and load fresh log
-            self.rollover_to_date(datetime.date.today())
+            try:
+                new_day = datetime.date.today()
+            except Exception:
+                new_day = self.today + datetime.timedelta(days=1)
+            self.reconcile_day_change(new_day)
         finally:
             # reschedule next midnight
             self.schedule_midnight()
