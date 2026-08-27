@@ -210,6 +210,7 @@ class DailyAssistantApp:
         side_frame.pack(side='left', fill='both', padx=6, pady=6)
         side_frame.pack_propagate(False)
         self.side_panel = SidePanel(side_frame, self.schedule_panel, self.coordinator, self.config)
+        self.schedule_panel.side_panel = self.side_panel
 
         # Column 3: Media controls
         media_frame = tk.Frame(main_frame, bg='white', width=media_w)

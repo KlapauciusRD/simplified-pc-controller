@@ -72,8 +72,9 @@ class SchedulePanel:
         # Do NOT pre-load `other_meds` from config; other meds are added
         # ad-hoc by the user at runtime and stored in the daily log.
         self.medications = meds
-        self.schedule = self.parse_schedule(self.config.get("schedule", []))
-        self.apply_overrides()
+        self.base_schedule = self.config.get("schedule", [])
+        self.schedule = []
+        self.refresh_schedule_for_date(datetime.date.today())
         
         self.today = datetime.date.today()
         self.log = self.load_log(self.today)
@@ -138,10 +139,11 @@ class SchedulePanel:
         out.sort(key=lambda x: x["time"])
         return out
     
-    def apply_overrides(self):
+    def apply_overrides(self, day=None):
         try:
             overrides = self.config.get("weekday_overrides", {})
-            wd = datetime.date.today().strftime("%A")
+            target_day = day or self.today
+            wd = target_day.strftime("%A")
             day_cfg = overrides.get(wd, {})
             extras = day_cfg.get("extra") if isinstance(day_cfg, dict) else None
             if extras:
@@ -161,6 +163,10 @@ class SchedulePanel:
                 self.schedule.sort(key=lambda x: x["time"])
         except Exception:
             pass
+
+    def refresh_schedule_for_date(self, day):
+        self.schedule = self.parse_schedule(self.base_schedule)
+        self.apply_overrides(day)
     
     def build_ui(self):
         # Top header
@@ -291,17 +297,7 @@ class SchedulePanel:
         self.date_label.config(text=now.strftime("%A %d %b %Y"))
         
         if now.date() != self.today:
-            self.today = now.date()
-            self.log = self.load_log(self.today)
-            for item in self.schedule:
-                chk = self.log.get(item["id"], {}).get("checked")
-                self.row_widgets[item["id"]]["check_var"].set("✓" if chk else "")
-                try:
-                    btn = self.row_widgets[item["id"]].get("check_btn")
-                    if btn:
-                        btn.config(text=("✓" if chk else "☐"))
-                except Exception:
-                    pass
+            self.rollover_to_date(now.date())
         
         self.parent.after(1000, self.update_clock)
     
@@ -361,9 +357,26 @@ class SchedulePanel:
                                                   datetime.time.min)
         ms = int((next_midnight - now).total_seconds() * 1000)
         self.parent.after(ms, self._midnight_handler)
+
+    def rollover_to_date(self, new_date):
+        self.today = new_date
+        self.refresh_schedule_for_date(new_date)
+        self.log = self.load_log(self.today)
+        self.build_schedule_rows()
+        try:
+            self.update_outstanding_flag()
+        except Exception:
+            pass
+        side_panel = getattr(self, "side_panel", None)
+        if side_panel and hasattr(side_panel, "refresh_for_new_day"):
+            try:
+                side_panel.refresh_for_new_day()
+            except Exception:
+                pass
     
     def _midnight_handler(self):
         try:
+            previous_day = self.today
             # Save current day's log; ensure directories exist
             try:
                 self.save_log()
@@ -371,7 +384,7 @@ class SchedulePanel:
                 pass
 
             try:
-                p = LOG_DIR / f"{self.today.isoformat()}.json"
+                p = LOG_DIR / f"{previous_day.isoformat()}.json"
                 if p.exists():
                     EXPORT_DIR.mkdir(parents=True, exist_ok=True)
                     try:
@@ -383,20 +396,10 @@ class SchedulePanel:
 
             # Reset to today's actual date (handles clock changes or missed midnights)
             try:
-                self.today = datetime.date.today()
+                new_day = datetime.date.today()
             except Exception:
-                self.today = self.today + datetime.timedelta(days=1)
+                new_day = previous_day + datetime.timedelta(days=1)
 
-            # Load (or create) new day's log and update UI
-            try:
-                self.log = self.load_log(self.today)
-                for item in self.schedule:
-                    chk = self.log.get(item["id"], {}).get("checked")
-                    try:
-                        self.row_widgets[item["id"]]["check_var"].set("✓" if chk else "")
-                    except Exception:
-                        pass
-            except Exception:
-                pass
+            self.rollover_to_date(new_day)
         finally:
             self.schedule_midnight()
