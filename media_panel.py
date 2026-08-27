@@ -9,6 +9,7 @@ import threading
 import time
 import logging
 import tkinter as tk
+from urllib.parse import unquote, urlparse
 from tkinter import ttk
 import ctypes
 from ctypes import wintypes
@@ -309,7 +310,6 @@ class MediaPanel:
             series_name = self.current_folder.name
             # Decode percent-encoded MRL to a plain path
             try:
-                from urllib.parse import unquote, urlparse
                 parsed = urlparse(completed_mrl)
                 completed_path = pathlib.Path(unquote(parsed.path)).resolve()
             except Exception:
@@ -658,7 +658,7 @@ class MediaPanel:
                     parts.append("outstanding schedule items")
                 if active_call:
                     parts.append("an active call")
-                message = f"Cannot play — {' and '.join(parts) or 'playback is currently blocked'}."
+                message = f"Cannot play — {' and '.join(parts) or 'an unknown reason'}."
                 try:
                     self._show_transient_popup(message, duration=3000)
                 except Exception:
