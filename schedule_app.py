@@ -858,9 +858,15 @@ class ScheduleApp:
                     pass
         if hasattr(self, "other_med_hist"):
             self.other_med_hist.delete(0, tk.END)
-            for rec in self.log.get("_other_meds", []) or []:
+            for rec in self.log.get("_other_meds") or []:
                 try:
-                    txt = f"{rec.get('ts','')} - {rec.get('name','')}"
+                    ts = rec.get("ts", "")
+                    name = rec.get("name", "")
+                    try:
+                        ts = datetime.datetime.fromisoformat(ts).strftime("%H:%M")
+                    except Exception:
+                        pass
+                    txt = f"{ts} - {name}"
                 except Exception:
                     txt = str(rec)
                 self.other_med_hist.insert(tk.END, txt)
