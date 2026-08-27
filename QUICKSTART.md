@@ -25,14 +25,16 @@ Edit `config.json`:
     {"time": "09:00", "title": "Start Work"}
   ],
   "teams_buttons": [
-    {"label": "Mom", "url": "https://teams.microsoft.com/l/meetup-join/..."}
+    {"name": "Mom", "user": "mom@example.com"}
   ],
   "series_dir": "D:/video/series",
   "movies_dir": "D:/video/movies"
 }
 ```
 
-**Important**: Update Teams button URLs with your actual meeting links.
+**Important**: Configure each quick call with a Teams user identifier. Pressing a
+button opens the Teams call workflow directly in the desktop client. Set
+`"video": true` when a video call is preferred; audio is the default.
 
 ### 4. Run the Application
 ```bash
@@ -42,9 +44,9 @@ python daily_assistant.py
 ## First Time Setup Checklist
 
 - [ ] Install Python 3.8+
-- [ ] Install dependencies (`pip install python-vlc pygetwindow pyautogui`)
+- [ ] Install dependencies (`pip install -r requirements.txt`)
 - [ ] Create or migrate `config.json`
-- [ ] Update Teams meeting URLs
+- [ ] Configure `quick_calls` contacts
 - [ ] Verify video directories exist
 - [ ] Test schedule display
 - [ ] Test water/medication tracking
@@ -84,7 +86,8 @@ python daily_assistant.py
 - Verify VLC is installed and media directories exist
 
 ### Teams buttons don't work
-- Verify Teams URLs are correct in `config.json`
+- Verify Teams is installed and signed in
+- Verify `quick_calls` entries contain a `user`, `email`, `id`, or direct `url`
 - Ensure Microsoft Teams app is installed
 - Check `daily_assistant.log` for errors
 

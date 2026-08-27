@@ -6,6 +6,7 @@ import threading
 import time
 import logging
 import webbrowser
+from urllib.parse import quote
 
 try:
     import pygetwindow as gw
@@ -84,40 +85,41 @@ class TeamsMonitor:
             time.sleep(1)
     
     def _process_call_request(self, call_config):
-        """Process outbound call request from UI - open chat and start audio call"""
+        """Process a queued outbound call using a Teams call deep link."""
         try:
-            # Extract user identifier (email, ID, or SIP address)
             user = call_config.get('user') or call_config.get('email') or call_config.get('id')
             name = call_config.get('name', 'contact')
             
-            if not user:
+            if not user and not call_config.get('url'):
                 logging.error("Call request missing user identifier")
                 return
             
-            logging.info(f"Opening chat with {user} ({name})")
-            
-            # Open chat with the user - reliable across all Teams versions/platforms
-            chat_url = f"https://teams.microsoft.com/l/chat/0/0?users={user}"
-            webbrowser.open(chat_url)
-            
-            # Wait longer for Teams to fully load the chat UI
-            logging.info("Waiting for Teams chat to load...")
-            time.sleep(4)
-            
-            # Attempt to start audio call automatically
-            if AUTOMATION_AVAILABLE:
-                success = self._start_audio_call()
-                if success:
-                    logging.info(f"Call initiated to {name} (video with audio fallback)")
-                    self.coordinator.last_call_opened = {'user': user, 'name': name, 'success': True}
-                else:
-                    logging.warning(f"Audio call automation failed for {name}")
-                    self.coordinator.last_call_opened = {'user': user, 'name': name, 'success': False}
+            if call_config.get('url'):
+                call_url = call_config['url']
             else:
-                logging.info(f"Chat opened with {name} - automation not available")
-                self.coordinator.last_call_opened = {'user': user, 'name': name, 'success': False}
+                encoded_user = quote(user.strip(), safe='')
+                with_video = 'true' if call_config.get('video', False) else 'false'
+                call_url = (f"https://teams.microsoft.com/l/call/0/0?users={encoded_user}"
+                            f"&withVideo={with_video}")
+
+            desktop_url = call_url.replace('https://', 'msteams://', 1)
+            opened = webbrowser.open(desktop_url, new=1)
+            if not opened:
+                opened = webbrowser.open(call_url, new=1)
+
+            self.coordinator.last_call_opened = {
+                'user': user,
+                'name': name,
+                'success': bool(opened)
+            }
+            logging.info(f"Teams call link opened for {name}: success={bool(opened)}")
             
         except Exception as e:
+            self.coordinator.last_call_opened = {
+                'user': user if 'user' in locals() else None,
+                'name': name if 'name' in locals() else 'contact',
+                'success': False
+            }
             logging.error(f"Error processing call request: {e}")
     
     # Removed fragile auto-click automation - chat opens and user manually clicks video button

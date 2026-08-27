@@ -5,6 +5,8 @@ Side panel with water tracking, medications, notes, and Teams quick-call buttons
 import datetime
 import tkinter as tk
 from tkinter import messagebox
+import webbrowser
+from urllib.parse import quote
 
 
 class SidePanel:
@@ -414,14 +416,40 @@ class SidePanel:
                               parent=self.parent)
             return
         
-        # Validate config has user identifier
+        # Accept either a direct Teams URL or a contact identifier.
         user = cfg.get('user') or cfg.get('email') or cfg.get('id')
-        if not user:
+        if not user and not cfg.get('url'):
             messagebox.showerror("Invalid config",
                               f"Call button {idx+1} needs a 'user', 'email', or 'id' field.\n\n"
                               "Example: {{\"name\": \"Mom\", \"user\": \"mom@example.com\"}}",
                               parent=self.parent)
             return
         
-        name = cfg.get('name', user)
-        self.coordinator.request_call(cfg)
+        name = cfg.get('name') or user or 'contact'
+
+        try:
+            if cfg.get('url'):
+                url = cfg['url']
+            else:
+                encoded_users = quote(user.strip(), safe='')
+                with_video = 'true' if cfg.get('video', False) else 'false'
+                url = (f"https://teams.microsoft.com/l/call/0/0?users={encoded_users}"
+                       f"&withVideo={with_video}")
+
+            # Prefer the desktop client, while retaining the Teams web fallback.
+            desktop_url = url.replace('https://', 'msteams://', 1)
+            opened = webbrowser.open(desktop_url, new=1)
+            if not opened:
+                opened = webbrowser.open(url, new=1)
+            self.coordinator.last_call_opened = {
+                'user': user,
+                'name': name,
+                'success': bool(opened)
+            }
+        except Exception as exc:
+            self.coordinator.last_call_opened = {
+                'user': user,
+                'name': name,
+                'success': False
+            }
+            messagebox.showerror("Call not started", str(exc), parent=self.parent)
