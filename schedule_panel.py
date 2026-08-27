@@ -142,7 +142,7 @@ class SchedulePanel:
     def apply_overrides(self, day=None):
         try:
             overrides = self.config.get("weekday_overrides", {})
-            target_day = day or self.today
+            target_day = day or getattr(self, "today", datetime.date.today())
             wd = target_day.strftime("%A")
             day_cfg = overrides.get(wd, {})
             extras = day_cfg.get("extra") if isinstance(day_cfg, dict) else None
